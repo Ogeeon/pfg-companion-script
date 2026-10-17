@@ -175,7 +175,7 @@
     const missingProduction = planets.filter((planet) => planet && planet.id != null && !(String(planet.id) in factors))
       .map((planet) => ({ id: String(planet.id), name: String(planet.name || ''), coords: [planet.galaxy, planet.system, planet.position].every(Number.isFinite) ? `${planet.galaxy}:${planet.system}:${planet.position}` : '' }));
     const accountReady = Number.isFinite(Number(exportData.playerId)) && !!exportData.speciesBonuses;
-    const bodiesReady = planets.length > 0 && planets.every((planet) => planet && Number.isFinite(Number(planet.id)) && Number.isFinite(Number(planet.position)));
+    const bodiesReady = planets.length > 0 && planets.every((planet) => planet && Number.isFinite(Number(planet.id)));
     const level = !accountReady || !bodiesReady ? 1 : missingProduction.length ? 2 : 3;
     return { level, accountReady, bodiesReady, missingProduction };
   }
