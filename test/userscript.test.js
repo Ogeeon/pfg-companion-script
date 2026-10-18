@@ -53,8 +53,20 @@ let writes;
 let fetches;
 let debugLines;
 let accountInfo;
+let tab;
+
+// sessionStorage of one browser tab, shared by the pages loaded in it; a new tab is a new game session.
+function newTab() {
+  const items = new Map();
+  return {
+    getItem: (key) => (items.has(key) ? items.get(key) : null),
+    setItem: (key, value) => { items.set(key, String(value)); },
+    removeItem: (key) => { items.delete(key); },
+  };
+}
 
 beforeEach(() => {
+  tab = newTab();
   store = {};
   writes = 0;
   fetches = 0;
@@ -70,9 +82,9 @@ function fakeResponse(url) {
 /**
  * Loads a page, runs the userscript on it and reports what happened during that load.
  * @param {string} html
- * @param {{ url?: string, script?: string, persistent?: boolean, setup?: (w: any) => void }} [options]
+ * @param {{ url?: string, script?: string, persistent?: boolean, setup?: (w: any) => void, afterLoad?: (w: any) => void }} [options]
  */
-async function runPage(html, { url = GAME_URL, script = USERSCRIPT, persistent = true, setup } = {}) {
+async function runPage(html, { url = GAME_URL, script = USERSCRIPT, persistent = true, setup, afterLoad } = {}) {
   const dom = new JSDOM(html, { url, runScripts: 'outside-only' });
   const w = dom.window;
   w.GM_getValue = (key, fallback) => (persistent && key in store ? structuredClone(store[key]) : fallback);
@@ -82,12 +94,17 @@ async function runPage(html, { url = GAME_URL, script = USERSCRIPT, persistent =
   w.structuredClone = structuredClone;
   w.console = { debug: (...args) => debugLines.push(args), log: console.log, error: console.error };
   w.fetch = async (requestUrl) => { fetches++; return { ok: true, json: async () => fakeResponse(requestUrl) }; };
+  Object.defineProperty(w, 'sessionStorage', { value: tab, configurable: true });
   setup?.(w);
   const writesBefore = writes;
   const fetchesBefore = fetches;
   w.eval(script);
   // Let the collection promise chain settle.
   await new Promise((resolve) => setTimeout(resolve, 50));
+  if (afterLoad) {
+    afterLoad(w);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
   const icon = w.document.getElementById('pfg-companion-icon');
   const result = {
     entry: Object.values(store[SNAPSHOTS_KEY] || {})[0],
@@ -127,19 +144,38 @@ test('derives production boosters per planet, including bronze ones', async () =
   });
 });
 
-test('refreshes boosters on the next collection', async () => {
+test('fetches the account once per game session', async () => {
   await runPage(gamePage());
   accountInfo.planets[4431812].buffs = [];
-  const throttled = await runPage(gamePage());
-  assert.strictEqual(throttled.fetches, 0, 'account fetch is throttled');
-  assert.strictEqual(throttled.writes, 0);
-  const entry = store[SNAPSHOTS_KEY][`en:1:${PLAYER_ID}`];
-  entry.collectedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-  const { entry: refreshed } = await runPage(gamePage());
+  const sameSession = await runPage(gamePage());
+  assert.strictEqual(sameSession.fetches, 0, 'no fetch on later page loads of the session');
+  assert.strictEqual(sameSession.writes, 0);
+  tab = newTab();
+  const { entry: refreshed, fetches: fetched } = await runPage(gamePage());
+  assert.strictEqual(fetched, 2, 'a new session fetches again');
   assert.deepStrictEqual(refreshed.export.pfgCompanion.productionBoosters[4431812], []);
 });
 
-test('saving production factors keeps the collection throttle', async () => {
+test('does not retry a failed collection in the same session', async () => {
+  const failing = { setup(w) { w.fetch = async () => { fetches++; return { ok: false, status: 500 }; }; } };
+  const first = await runPage(gamePage(), failing);
+  assert.strictEqual(first.fetches, 2);
+  const second = await runPage(gamePage(), failing);
+  assert.strictEqual(second.fetches, 0);
+});
+
+test('Refresh fetches the account again in the same session', async () => {
+  await runPage(gamePage({ menu: true }));
+  const { fetches: fetched } = await runPage(gamePage({ menu: true }), {
+    afterLoad(w) {
+      w.document.getElementById('pfg-companion-menu-btn').click();
+      w.document.getElementById('pfg-refresh').click();
+    },
+  });
+  assert.strictEqual(fetched, 2);
+});
+
+test('saving production factors does not fetch the account again', async () => {
   const first = await runPage(gamePage());
   const select = '<select name="productionFactor[1]"><option value="80" selected>80%</option></select>';
   const { entry, fetches: fetched, writes: written } = await runPage(gamePage({ body: select }), { url: SETTINGS_URL });

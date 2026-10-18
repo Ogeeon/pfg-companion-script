@@ -20,9 +20,9 @@ The script runs in two modes, chosen by `ON_GAME` (hostname ends with `.ogame.ga
 
 **Game mode** (OGame page):
 1. `installGameUi()` adds a `PfG Companion` entry to `#menuTable` with a battery-level icon and a slide-out panel.
-2. `collectAccount()` fetches `accountInfo` and `speciesBonuses` from OGame's `externaldataexport` component, throttled to once per `COLLECTION_INTERVAL_MS` (5 min) per account unless forced (panel "Refresh" button).
+2. `collectAccount()` fetches `accountInfo` and `speciesBonuses` from OGame's `externaldataexport` component, once per game session unless forced (panel "Refresh" button): `markCollectedThisSession()` writes the player id to the tab's `sessionStorage` (`SESSION_COLLECTED_KEY`) before the request, so failures are not retried either. This follows the OGame tool rules: every `accountInfo` call marks the player active and refreshes the highscore, so it must not be polled.
 3. `buildExport()` strips bulky response keys, merges body details parsed from planet-list tooltips (coords, temperature, fields, diameter), and sets `schemaVersion: 2`, `universe`, `exportedAt`.
-4. `saveProductionFactors()` reads production-percentage selects **only** when `component=resourcesettings` is open, for the current planet. It keeps the entry's `collectedAt`, so the account-fetch throttle is not reset.
+4. `saveProductionFactors()` reads production-percentage selects **only** when `component=resourcesettings` is open, for the current planet. It keeps the entry's `collectedAt` and never fetches the account.
 5. `persistExport()` merges new production factors with previously stored ones, derives `pfgCompanion.productionBoosters` from `planets[id].buffs` via `productionBoosters()`, recomputes `pfgCompanion.status` via `collectionStatus()` (level 1 = account/bodies missing, 2 = some planets lack production factors, 3 = complete), and writes to GM storage.
 
 **Site mode** (PfG page): `handOffToSite()` writes `{ version: 1, exports: [...] }` to `localStorage['pfg_companion_pending_export']` and dispatches the `pfg-companion:sync` document event; re-runs whenever GM storage changes (`GM_addValueChangeListener`).

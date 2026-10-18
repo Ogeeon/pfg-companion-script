@@ -24,7 +24,7 @@
 
   const SNAPSHOTS_KEY = 'pfg-companion:snapshots:v1';
   const PENDING_EXPORT_KEY = 'pfg_companion_pending_export';
-  const COLLECTION_INTERVAL_MS = 5 * 60 * 1000;
+  const SESSION_COLLECTED_KEY = 'pfg-companion:collected';
   const EVENT_NAME = 'pfg-companion:sync';
   const GAME_COMPONENT = new URLSearchParams(location.search).get('component');
   const ON_GAME = location.hostname.endsWith('.ogame.gameforge.com');
@@ -380,6 +380,24 @@
     return document.querySelector('meta[name="ogame-player-id"]')?.content || null;
   }
 
+  // OGame tool rules: every accountInfo request marks the player active and refreshes the highscore of all planets,
+  // so the account is fetched once per game session (the browser tab's sessionStorage) and then only by Refresh.
+  function collectedThisSession() {
+    try {
+      return sessionStorage.getItem(SESSION_COLLECTED_KEY) === String(currentPagePlayerId());
+    } catch {
+      return Boolean(activeEntry());
+    }
+  }
+
+  function markCollectedThisSession() {
+    try {
+      sessionStorage.setItem(SESSION_COLLECTED_KEY, String(currentPagePlayerId()));
+    } catch {
+      // Without sessionStorage collectedThisSession() falls back to the stored entry.
+    }
+  }
+
   function activeEntry() {
     const uni = universe();
     const planetId = currentPlanetId();
@@ -551,16 +569,12 @@
       return null;
     }
     debug('collectAccount: start, force=', force);
-    const existing = activeEntry();
-    if (existing) {
-      debug('collectAccount: existing entry found, collectedAt=', existing.collectedAt, 'msSinceLastCollection=', Date.now() - Date.parse(existing.collectedAt));
-      if (!force && Date.now() - Date.parse(existing.collectedAt) < COLLECTION_INTERVAL_MS) {
-        debug('collectAccount: skipped, last collection within interval');
-        return existing.export;
-      }
-    } else {
-      debug('collectAccount: no existing snapshot entry, collecting fresh');
+    if (!force && collectedThisSession()) {
+      debug('collectAccount: skipped, already collected in this session');
+      return activeEntry()?.export || null;
     }
+    // Marked before the request, so a failed collection is not retried on every page load either.
+    markCollectedThisSession();
     const base = '/game/index.php?page=componentOnly&component=externaldataexport';
     debug('collectAccount: fetching accountInfo and speciesBonuses');
     const [accountInfo, speciesBonuses] = await Promise.all([
