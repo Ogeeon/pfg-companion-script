@@ -25,6 +25,8 @@
   const SNAPSHOTS_KEY = 'pfg-companion:snapshots:v1';
   const PENDING_EXPORT_KEY = 'pfg_companion_pending_export';
   const SESSION_COLLECTED_KEY = 'pfg-companion:collected';
+  const SESSION_SPECIES_RETRY_KEY = 'pfg-companion:species-retry';
+  const EXPORT_URL = '/game/index.php?page=componentOnly&component=externaldataexport';
   const EVENT_NAME = 'pfg-companion:sync';
   const GAME_COMPONENT = new URLSearchParams(location.search).get('component');
   const ON_GAME = location.hostname.endsWith('.ogame.gameforge.com');
@@ -398,6 +400,26 @@
     }
   }
 
+  // On the first page after login the game answers speciesBonuses without data, so only speciesBonuses is requested
+  // once more, on the next page the player loads; accountInfo is not repeated.
+  function speciesRetryPending() {
+    try {
+      return sessionStorage.getItem(SESSION_SPECIES_RETRY_KEY) === String(currentPagePlayerId());
+    } catch {
+      return false;
+    }
+  }
+
+  /** @param {boolean} pending */
+  function setSpeciesRetry(pending) {
+    try {
+      if (pending) sessionStorage.setItem(SESSION_SPECIES_RETRY_KEY, String(currentPagePlayerId()));
+      else sessionStorage.removeItem(SESSION_SPECIES_RETRY_KEY);
+    } catch {
+      // Without sessionStorage there is no retry; the panel's Refresh still works.
+    }
+  }
+
   function activeEntry() {
     const uni = universe();
     const planetId = currentPlanetId();
@@ -570,22 +592,40 @@
     }
     debug('collectAccount: start, force=', force);
     if (!force && collectedThisSession()) {
+      if (speciesRetryPending()) return retrySpeciesBonuses();
       debug('collectAccount: skipped, already collected in this session');
       return activeEntry()?.export || null;
     }
     // Marked before the request, so a failed collection is not retried on every page load either.
     markCollectedThisSession();
-    const base = '/game/index.php?page=componentOnly&component=externaldataexport';
     debug('collectAccount: fetching accountInfo and speciesBonuses');
     const [accountInfo, speciesBonuses] = await Promise.all([
-      fetchJson(`${base}&action=accountInfo&asJson=1`),
-      fetchJson(`${base}&action=speciesBonuses&asJson=1`),
+      fetchJson(`${EXPORT_URL}&action=accountInfo&asJson=1`),
+      fetchJson(`${EXPORT_URL}&action=speciesBonuses&asJson=1`),
     ]);
+    setSpeciesRetry(!speciesBonuses?.data);
     debug('collectAccount: fetch resolved, accountInfo keys=', accountInfo && typeof accountInfo === 'object' ? Object.keys(accountInfo).join(',') : 'invalid', 'playerId=', accountInfo?.playerId, 'planets=', accountInfo?.planets && typeof accountInfo.planets === 'object' ? Object.keys(accountInfo.planets).length : 0, 'speciesBonuses=', !!speciesBonuses);
     const saved = persistExport(buildExport(accountInfo, speciesBonuses, uni));
     debug('collectAccount: persistExport finished, saved=', saved ? 'yes' : 'no');
     if (saved?.playerId) CURRENT_PLAYER_ID = String(saved.playerId);
     return saved;
+  }
+
+  async function retrySpeciesBonuses() {
+    // Cleared before the request: one retry per collection, whatever the answer.
+    setSpeciesRetry(false);
+    const entry = activeEntry();
+    if (!entry?.export) return null;
+    debug('retrySpeciesBonuses: fetching speciesBonuses only');
+    const response = await fetchJson(`${EXPORT_URL}&action=speciesBonuses&asJson=1`);
+    if (!response?.data) {
+      debug('retrySpeciesBonuses: still no data');
+      return entry.export;
+    }
+    const next = structuredClone(entry.export);
+    next.speciesBonuses = stripDetails(response.data);
+    next.exportedAt = new Date().toISOString();
+    return persistExport(next, entry.collectedAt);
   }
 
   function currentPlanetId() {

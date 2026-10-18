@@ -165,6 +165,39 @@ test('does not retry a failed collection in the same session', async () => {
   assert.strictEqual(second.fetches, 0);
 });
 
+// Right after login the game answers speciesBonuses without data.
+const speciesWithoutData = {
+  setup(w) {
+    const fetchWithData = w.fetch;
+    w.fetch = async (url) => {
+      if (!String(url).includes('action=speciesBonuses')) return fetchWithData(url);
+      fetches++;
+      return { ok: true, json: async () => ({ components: [] }) };
+    };
+  },
+};
+
+test('requests only speciesBonuses once more on the next page load when it came without data', async () => {
+  const first = await runPage(gamePage(), speciesWithoutData);
+  assert.strictEqual(first.fetches, 2);
+  assert.strictEqual(first.entry.export.pfgCompanion.status.accountReady, false);
+  const retried = await runPage(gamePage());
+  assert.strictEqual(retried.fetches, 1, 'accountInfo is not requested again');
+  assert.deepStrictEqual(retried.entry.export.speciesBonuses, { bonus: 1 });
+  assert.strictEqual(retried.entry.export.pfgCompanion.status.accountReady, true);
+  assert.strictEqual(retried.entry.collectedAt, first.entry.collectedAt, 'collectedAt stays the time of the accountInfo request');
+  const later = await runPage(gamePage());
+  assert.strictEqual(later.fetches, 0);
+});
+
+test('retries speciesBonuses only once per collection', async () => {
+  await runPage(gamePage(), speciesWithoutData);
+  const retried = await runPage(gamePage(), speciesWithoutData);
+  assert.strictEqual(retried.fetches, 1);
+  const later = await runPage(gamePage());
+  assert.strictEqual(later.fetches, 0);
+});
+
 test('Refresh fetches the account again in the same session', async () => {
   await runPage(gamePage({ menu: true }));
   const { fetches: fetched } = await runPage(gamePage({ menu: true }), {

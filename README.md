@@ -4,7 +4,7 @@ PfG Companion is a userscript for OGame and ProxyForGame. It reads an account sn
 
 ## Behaviour
 
-- Requests the account from OGame (`accountInfo` and `speciesBonuses`) once per game session — on the first game page load in a browser tab — and afterwards only when the player presses "Refresh" in the panel. Every such request marks the player active and refreshes the highscore, so the script does not repeat it on its own, not even after a failed attempt.
+- Requests the account from OGame (`accountInfo` and `speciesBonuses`) once per game session — on the first game page load in a browser tab — and afterwards only when the player presses "Refresh" in the panel. Every such request marks the player active and refreshes the highscore, so the script does not repeat it on its own, not even after a failed attempt. The one exception: on the first page after login the game answers `speciesBonuses` without data, and then `speciesBonuses` alone (not `accountInfo`) is requested once more on the next page the player loads.
 - Never changes the selected planet, opens a game page, or runs a background polling loop.
 - Reads production factors only when the player has opened Resource Settings for that planet.
 - Adds a `PfG Companion` entry to the OGame menu. Its battery indicator shows whether account, bodies, and production settings have been collected. The panel explains every missing part and shows the time of the last collection.
@@ -16,7 +16,7 @@ The userscript manager keeps a single value, `pfg-companion:snapshots:v1`: an ob
 
 - `collectedAt` — ISO time of the last `accountInfo` fetch. Saving production factors does not change it.
 
-The tab's `sessionStorage` on the game page holds `pfg-companion:collected` — the id of the player whose account was already requested in this tab.
+The tab's `sessionStorage` on the game page holds `pfg-companion:collected` — the id of the player whose account was already requested in this tab — and, while a `speciesBonuses` retry is pending, `pfg-companion:species-retry` with the same id.
 - `export` — the snapshot described below.
 - `error` — `{ at, message }` of the last failed collection; it is dropped by the next successful save.
 
