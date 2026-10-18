@@ -405,7 +405,7 @@
   function panelText(exportData, status) {
     if (status.level === 3) return 'All profile data is collected.';
     if (status.level === 2) return '';
-    if (!exportData) return 'Navigate to any OGame page to start collection of data.';
+    if (!exportData) return "Navigate to any OGame page or hit 'Refresh' to start collection of data.";
     const missing = [];
     if (!status.accountReady) missing.push('account data (player id or species bonuses)');
     if (!status.bodiesReady) missing.push('planet list');
