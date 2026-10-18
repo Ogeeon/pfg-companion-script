@@ -10,7 +10,7 @@ A single-file userscript (Tampermonkey/Violentmonkey) that collects an OGame acc
 
 - `npm run check` — syntax-check the userscript (`node --check`).
 - `npm test` — `node:test` suite in `test/`: runs the whole userscript in jsdom on a minimal game page with stubbed `GM_*` and `fetch` (the fake `accountInfo` mirrors a real response), then asserts on GM storage. Full saved game pages (`view-source*.html`, gitignored) contain session tokens and must not be committed. No linter.
-- Manual testing: install `src/pfg-companion.user.js` in a userscript manager. Besides OGame and proxyforgame.com, the `@match` metadata covers `http://pfg.wmp/*` and `http://localhost:8000/*` for local PfG development.
+- Manual testing: install `src/pfg-companion.user.js` in a userscript manager. The `@match` metadata covers only OGame and proxyforgame.com.
 
 ## Architecture
 

@@ -6,8 +6,6 @@
 // @match        https://*.ogame.gameforge.com/game/index.php*
 // @match        https://proxyforgame.com/*
 // @match        https://www.proxyforgame.com/*
-// @match        http://pfg.wmp/*
-// @match        http://localhost:8000/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_addValueChangeListener

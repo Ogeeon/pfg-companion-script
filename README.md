@@ -39,6 +39,6 @@ The snapshot is compatible with the account-export format consumed by `profiles-
 
 ## Local development
 
-Install the script file at `src/pfg-companion.user.js` in Tampermonkey or Violentmonkey. The metadata also matches `http://pfg.wmp/*` and `http://localhost:8000/*` for local ProxyForGame development.
+Install the script file at `src/pfg-companion.user.js` in Tampermonkey or Violentmonkey.
 
 Run `npm run check` to syntax-check the userscript and `npm test` (after `npm install`) to run the jsdom tests.
