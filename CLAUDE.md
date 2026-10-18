@@ -27,7 +27,8 @@ The script runs in two modes, chosen by `ON_GAME` (hostname ends with `.ogame.ga
 
 ### Storage and contracts
 
-- GM storage key `pfg-companion:snapshots:v1` holds `{ "<lang>:<uniNumber>:<playerId>": { collectedAt, export, error? } }`. `activeEntry()` finds the entry for the current universe host/player/planet.
+- GM storage key `pfg-companion:snapshots:v1` holds `{ "<lang>:<uniNumber>:<playerId>": { collectedAt, export, error?: { at, message } } }`. `activeEntry()` finds the entry for the current universe host/player/planet. `recordError()` adds `error` to an existing entry; the next `persistExport()` rewrites the entry without it. The panel's "Clear data" removes the current account's entry, or all entries when there is no active one. The README "Stored data" section documents the stored fields for players — update it together with the code.
+- `persistExport()` keeps previously stored `speciesBonuses` and `planets` when a new response lacks them; `productionFactors` of different planets accumulate.
 - The export must stay compatible with the account-export format parsed by PfG's `profiles-core.js` (schema version 2); companion-specific data goes only under the optional `pfgCompanion` block (`productionFactors`, `productionBoosters`, `status`). Changing these keys/event names breaks the site hand-off.
 - The script never writes account data to a PfG server.
 
