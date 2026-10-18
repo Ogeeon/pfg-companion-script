@@ -7,6 +7,7 @@ PfG Companion is a userscript for OGame and ProxyForGame. It reads an account sn
 - Collects no more than once every five minutes per OGame account.
 - Never changes the selected planet, opens a game page, or runs a background polling loop.
 - Reads production factors only when the player has opened Resource Settings for that planet.
+- Reads the items active on the current planet (resource and energy boosters, etc.) from the item bar of whatever game page is open.
 - Adds a `PfG Companion` entry to the OGame menu. Its battery indicator shows whether account, bodies, and production settings have been collected. The panel explains every missing part and shows the time of the last collection.
 - Keeps snapshots in the userscript manager, separated by universe and player id. The script writes no account data to a ProxyForGame server.
 
@@ -14,10 +15,10 @@ PfG Companion is a userscript for OGame and ProxyForGame. It reads an account sn
 
 On a ProxyForGame page, the script writes the latest snapshot to local storage under `pfg_companion_pending_export` and emits the `pfg-companion:sync` document event. The site should validate the JSON with its existing profile export parser before applying it.
 
-The snapshot is compatible with the account-export format consumed by `profiles-core.js` and uses schema version 2. It adds an optional `pfgCompanion` block containing collection status and per-planet production factors.
+The snapshot is compatible with the account-export format consumed by `profiles-core.js` and uses schema version 2. It adds an optional `pfgCompanion` block containing collection status, per-planet production factors, and per-planet active items (`activeItems[planetId] = { collectedAt, items: [{ uuid, name, boost, totalDuration, expiresAt }] }`). `boost` is `{ resource, tier, percent? }` for known production boosters (`resource` is `metal`, `crystal`, `deuterium`, `energy` or `all`) and `null` for other items; the site should ignore items whose `expiresAt` has passed.
 
 ## Local development
 
 Install the script file at `src/pfg-companion.user.js` in Tampermonkey or Violentmonkey. The metadata also matches `http://pfg.wmp/*` and `http://localhost:8000/*` for local ProxyForGame development.
 
-Run `npm run check` to syntax-check the userscript.
+Run `npm run check` to syntax-check the userscript and `npm test` (after `npm install`) to run the jsdom tests.

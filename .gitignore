@@ -1,0 +1,3 @@
+node_modules/
+# Full saved game pages contain session tokens; trimmed copies go to test/fixtures.
+view-source*.html

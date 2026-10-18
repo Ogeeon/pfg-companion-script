@@ -4,7 +4,11 @@
   "private": true,
   "description": "A userscript companion for synchronising OGame account data with ProxyForGame.",
   "scripts": {
-    "check": "node --check src/pfg-companion.user.js"
+    "check": "node --check src/pfg-companion.user.js",
+    "test": "node --test \"test/**/*.test.js\""
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "jsdom": "^24.1.3"
+  }
 }
