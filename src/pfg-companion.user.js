@@ -12,6 +12,7 @@
 // @grant        GM_setValue
 // @grant        GM_addValueChangeListener
 // @grant        GM_addStyle
+// @grant        unsafeWindow
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -495,7 +496,7 @@
     const status = collectionStatus(activeEntry()?.export);
     entry.innerHTML = `
       <span class="menu_icon">
-        <a id="pfg-companion-icon" href="#" target="_self" style="display:block;line-height:0;text-decoration:none;">
+        <a id="pfg-companion-icon" class="tooltipRight js_hideTipOnMobile" href="#" target="_self" style="display:block;line-height:0;text-decoration:none;">
           <img class="pfg-level-icon" src="${LEVEL_ICONS[status.level] || LEVEL_ICONS[1]}" alt="PfG Companion status" width="27" height="27">
         </a>
       </span>
@@ -517,10 +518,44 @@
     refreshGameUi();
   }
 
+  /** @param {any} exportData @param {ReturnType<typeof collectionStatus>} status */
+  function levelTooltip(exportData, status) {
+    if (status.level === 3) return 'All profile data is collected.';
+    if (status.level === 2) {
+      const count = status.missingProduction.length;
+      return `Account and planets are collected; production percentages are missing for ${count} planet${count === 1 ? '' : 's'}. Open Resource Settings on each of them.`;
+    }
+    if (!exportData) return 'Nothing collected yet.';
+    const missing = [];
+    if (!status.accountReady) missing.push('account data');
+    if (!status.bodiesReady) missing.push('planet list');
+    return `Missing ${missing.join(' and ')}. Open the panel and press Refresh.`;
+  }
+
   function refreshGameUi() {
-    const status = collectionStatus(activeEntry()?.export);
+    const exportData = activeEntry()?.export;
+    const status = collectionStatus(exportData);
     const iconSrc = LEVEL_ICONS[status.level] || LEVEL_ICONS[1];
     document.querySelectorAll('#pfg-companion-menu .pfg-level-icon').forEach((icon) => icon.setAttribute('src', iconSrc));
+    setIconTooltip(levelTooltip(exportData, status));
+  }
+
+  // OGame turns `title` into its own tooltip only during its initial pass over the page, which has already
+  // run when the menu entry is added, so the game's changeTooltip() is called directly. Falls back to a plain title.
+  /** @param {string} text */
+  function setIconTooltip(text) {
+    const icon = document.getElementById('pfg-companion-icon');
+    if (!icon || icon.getAttribute('data-tooltip-title') === text) return;
+    const page = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+    if (typeof page.changeTooltip === 'function') {
+      try {
+        page.changeTooltip(icon, text);
+        return;
+      } catch (error) {
+        debug('setIconTooltip: changeTooltip failed, using a plain title:', error);
+      }
+    }
+    icon.setAttribute('title', text);
   }
 
   function handOffToSite() {

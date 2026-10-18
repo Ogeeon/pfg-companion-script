@@ -41,6 +41,7 @@ The script runs in two modes, chosen by `ON_GAME` (hostname ends with `.ogame.ga
 - `PRODUCTION_ITEMS` maps production-booster item uuids to `{ resource, tier, percent? }`; each booster has one uuid per duration. Shop uuids come from the shop page's `itemNames`; bronze boosters are not in the shop, so their uuids come from `#buffBar` on a planet where they are active.
 - `LEVEL_ICONS` holds base64 PNGs embedded from `assets/battery-level-{1,2,3}.png`; if the PNGs change, re-embed them into the script.
 - Debug logging goes through `debug('...')`, which prints `console.debug('[PfG Companion] ...')` only when the `DEBUG` constant at the top of the script is `true` (the player flips it in the userscript manager's editor). Keep `DEBUG = false` in commits.
+- The battery icon's tooltip (`levelTooltip()`) uses OGame's own tooltips: the icon has class `tooltipRight`, and `setIconTooltip()` calls the page's `changeTooltip()` via `unsafeWindow`, because OGame's `initTooltips()` has already run by the time the menu entry is added. It falls back to a plain `title`.
 - The panel never opens on its own: only the menu entry opens it; after collection it is re-rendered only if already open.
 - Commit messages are written in Russian.
 - Source files use CRLF line endings.

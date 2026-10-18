@@ -19,6 +19,7 @@ let writes;
 let fetches;
 let debugLines;
 let panelOpen;
+let iconTitle;
 
 beforeEach(() => {
   store = {};
@@ -51,6 +52,7 @@ async function runPage(html) {
   // Let the collection promise chain settle.
   await new Promise((resolve) => setTimeout(resolve, 50));
   panelOpen = Boolean(w.document.getElementById('pfg-companion-panel')?.classList.contains('pfg-open'));
+  iconTitle = w.document.getElementById('pfg-companion-icon')?.getAttribute('title') ?? null;
   w.close();
   return { entry: Object.values(store[SNAPSHOTS_KEY] || {})[0], writes: writes - writesBefore, fetches: fetches - fetchesBefore };
 }
@@ -120,6 +122,43 @@ test('does not open the panel or log debug output by itself', async () => {
   await runPage(OVERVIEW);
   assert.strictEqual(panelOpen, false);
   assert.deepStrictEqual(debugLines, []);
+});
+
+test('explains the battery level in the icon tooltip', async () => {
+  const withMenu = OVERVIEW.replace('<body>', '<body><ul id="menuTable"></ul>');
+  await runPage(withMenu);
+  assert.match(iconTitle, /^Account and planets are collected; .*missing for 2 planets\./);
+  const settings = PLANET_IDS.map((id) => [id, { 1: 100 }]);
+  const entry = Object.values(store[SNAPSHOTS_KEY])[0];
+  entry.export.pfgCompanion.productionFactors = Object.fromEntries(settings);
+  await runPage(withMenu);
+  assert.strictEqual(iconTitle, 'All profile data is collected.');
+});
+
+test('uses the game tooltip when OGame provides changeTooltip', async () => {
+  const dom = new JSDOM(OVERVIEW.replace('<body>', '<body><ul id="menuTable"></ul>'), { url: GAME_URL, runScripts: 'outside-only' });
+  const w = dom.window;
+  const calls = [];
+  w.GM_getValue = (key, fallback) => fallback;
+  w.GM_setValue = () => {};
+  w.GM_addValueChangeListener = () => {};
+  w.GM_addStyle = () => {};
+  w.console = { debug() {} };
+  w.fetch = async (url) => ({ ok: true, json: async () => fakeResponse(url) });
+  w.unsafeWindow = w;
+  // Mimics OGame: the title moves to data-tooltip-title once the tooltip is created.
+  w.changeTooltip = (element, title) => {
+    calls.push(title);
+    element.removeAttribute('title');
+    element.setAttribute('data-tooltip-title', title);
+  };
+  w.eval(USERSCRIPT);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const icon = w.document.getElementById('pfg-companion-icon');
+  assert.ok(icon.classList.contains('tooltipRight'));
+  assert.strictEqual(icon.getAttribute('title'), null);
+  assert.deepStrictEqual(calls, ['Nothing collected yet.'], 'the tooltip is not re-created when the text does not change');
+  w.close();
 });
 
 test('logs debug output when DEBUG is switched on', async () => {
