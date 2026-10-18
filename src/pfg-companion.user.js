@@ -18,6 +18,9 @@
 (function () {
   'use strict';
 
+  // Set to true to print collection details to the browser console.
+  const DEBUG = false;
+
   const SNAPSHOTS_KEY = 'pfg-companion:snapshots:v1';
   const PENDING_EXPORT_KEY = 'pfg_companion_pending_export';
   const COLLECTION_INTERVAL_MS = 5 * 60 * 1000;
@@ -84,6 +87,11 @@
     '370a7d4f976480fa054ef23068c442fc6e476301': { resource: 'all', tier: 'bronze', percent: 40 }, // Resource Booster (40%) Bronze
     '8cc0f382c3e6bb0751b42b8e9b9a0d3648313f25': { resource: 'all', tier: 'bronze', percent: 40 }, // Resource Booster (40%) Bronze
   };
+
+  /** @param {string} message @param {...any} details */
+  function debug(message, ...details) {
+    if (DEBUG) console.debug(`[PfG Companion] ${message}`, ...details);
+  }
 
   /** @returns {Record<string, any>} */
   function snapshots() {
@@ -210,13 +218,13 @@
   /** @param {any} accountInfo @param {any} speciesBonuses @param {{number: number, language: string, host: string}} uni */
   function buildExport(accountInfo, speciesBonuses, uni) {
     const result = stripResponse(accountInfo);
-    console.debug('[PfG Companion] buildExport: accountInfo keys=', result && typeof result === 'object' ? Object.keys(result).join(',') : 'invalid', 'playerId=', result?.playerId, 'planets=', result?.planets && typeof result.planets === 'object' ? Object.keys(result.planets).length : 0, 'speciesBonusesFetched=', !!speciesBonuses);
+    debug('buildExport: accountInfo keys=', result && typeof result === 'object' ? Object.keys(result).join(',') : 'invalid', 'playerId=', result?.playerId, 'planets=', result?.planets && typeof result.planets === 'object' ? Object.keys(result.planets).length : 0, 'speciesBonusesFetched=', !!speciesBonuses);
     const details = bodyDetailsFromMenu();
     if (result.planets && typeof result.planets === 'object') mergeBodyDetails(result.planets, details.planets);
     if (result.moons && typeof result.moons === 'object') mergeBodyDetails(result.moons, details.moons);
     const bonusResponse = stripResponse(speciesBonuses);
     if (bonusResponse?.data) result.speciesBonuses = stripDetails(bonusResponse.data);
-    else console.debug('[PfG Companion] buildExport: speciesBonuses response has no data, keys=', bonusResponse && typeof bonusResponse === 'object' ? Object.keys(bonusResponse).join(',') : typeof bonusResponse);
+    else debug('buildExport: speciesBonuses response has no data, keys=', bonusResponse && typeof bonusResponse === 'object' ? Object.keys(bonusResponse).join(',') : typeof bonusResponse);
     result.schemaVersion = 2;
     result.universe = uni;
     result.exportedAt = new Date().toISOString();
@@ -240,7 +248,7 @@
   /** @param {any} exportData @param {string} [collectedAt] time of the last account fetch, which drives the collection throttle */
   function persistExport(exportData, collectedAt = exportData?.exportedAt) {
     const uni = universe();
-    console.debug('[PfG Companion] persistExport: playerId=', exportData?.playerId, 'playerIdValid=', Number.isFinite(Number(exportData?.playerId)), 'universe=', uni ? `${uni.language}:${uni.number}` : null, 'hasPlanets=', !!(exportData?.planets && typeof exportData.planets === 'object'));
+    debug('persistExport: playerId=', exportData?.playerId, 'playerIdValid=', Number.isFinite(Number(exportData?.playerId)), 'universe=', uni ? `${uni.language}:${uni.number}` : null, 'hasPlanets=', !!(exportData?.planets && typeof exportData.planets === 'object'));
     if (!uni || !Number.isFinite(Number(exportData.playerId))) return;
     const all = snapshots();
     const existing = all[accountKey(exportData.playerId, uni)]?.export || {};
@@ -260,29 +268,29 @@
   async function collectAccount(force = false) {
     const uni = universe();
     if (!uni) {
-      console.debug('[PfG Companion] collectAccount: universe not detected, aborting');
+      debug('collectAccount: universe not detected, aborting');
       return null;
     }
-    console.debug('[PfG Companion] collectAccount: start, force=', force);
+    debug('collectAccount: start, force=', force);
     const existing = activeEntry();
     if (existing) {
-      console.debug('[PfG Companion] collectAccount: existing entry found, collectedAt=', existing.collectedAt, 'msSinceLastCollection=', Date.now() - Date.parse(existing.collectedAt));
+      debug('collectAccount: existing entry found, collectedAt=', existing.collectedAt, 'msSinceLastCollection=', Date.now() - Date.parse(existing.collectedAt));
       if (!force && Date.now() - Date.parse(existing.collectedAt) < COLLECTION_INTERVAL_MS) {
-        console.debug('[PfG Companion] collectAccount: skipped, last collection within interval');
+        debug('collectAccount: skipped, last collection within interval');
         return existing.export;
       }
     } else {
-      console.debug('[PfG Companion] collectAccount: no existing snapshot entry, collecting fresh');
+      debug('collectAccount: no existing snapshot entry, collecting fresh');
     }
     const base = '/game/index.php?page=componentOnly&component=externaldataexport';
-    console.debug('[PfG Companion] collectAccount: fetching accountInfo and speciesBonuses');
+    debug('collectAccount: fetching accountInfo and speciesBonuses');
     const [accountInfo, speciesBonuses] = await Promise.all([
       fetchJson(`${base}&action=accountInfo&asJson=1`),
       fetchJson(`${base}&action=speciesBonuses&asJson=1`),
     ]);
-    console.debug('[PfG Companion] collectAccount: fetch resolved, accountInfo keys=', accountInfo && typeof accountInfo === 'object' ? Object.keys(accountInfo).join(',') : 'invalid', 'playerId=', accountInfo?.playerId, 'planets=', accountInfo?.planets && typeof accountInfo.planets === 'object' ? Object.keys(accountInfo.planets).length : 0, 'speciesBonuses=', !!speciesBonuses);
+    debug('collectAccount: fetch resolved, accountInfo keys=', accountInfo && typeof accountInfo === 'object' ? Object.keys(accountInfo).join(',') : 'invalid', 'playerId=', accountInfo?.playerId, 'planets=', accountInfo?.planets && typeof accountInfo.planets === 'object' ? Object.keys(accountInfo.planets).length : 0, 'speciesBonuses=', !!speciesBonuses);
     const saved = persistExport(buildExport(accountInfo, speciesBonuses, uni));
-    console.debug('[PfG Companion] collectAccount: persistExport finished, saved=', saved ? 'yes' : 'no');
+    debug('collectAccount: persistExport finished, saved=', saved ? 'yes' : 'no');
     if (saved?.playerId) CURRENT_PLAYER_ID = String(saved.playerId);
     return saved;
   }
@@ -299,7 +307,7 @@
 
   function readProductionFactors() {
     if (String(GAME_COMPONENT || '').toLowerCase() !== 'resourcesettings') {
-      console.debug('[PfG Companion] readProductionFactors: current component is not resourcesettings, skipping production factor lookup');
+      debug('readProductionFactors: current component is not resourcesettings, skipping production factor lookup');
       return null;
     }
     const planetId = currentPlanetId();
@@ -307,18 +315,18 @@
     const factors = {};
     const desired = [1, 2, 3, 4, 12, 212, 217];
     const availableSelects = [...document.querySelectorAll('select[name^="productionFactor["]'), ...document.querySelectorAll('[data-ipi-hint*="Resourcesetting"] select')];
-    console.debug('[PfG Companion] production factor selects found:', availableSelects.map((select) => `${select.name || select.closest('[data-ipi-hint]')?.getAttribute('data-ipi-hint') || '?'}=${select.value}`));
+    debug('production factor selects found:', availableSelects.map((select) => `${select.name || select.closest('[data-ipi-hint]')?.getAttribute('data-ipi-hint') || '?'}=${select.value}`));
     desired.forEach((techId) => {
       const select =
         document.querySelector(`select[name="productionFactor[${techId}]"]`) ||
         document.querySelector(`[data-ipi-hint="ipiResourcesetting${techId}"] select`);
       if (!select) {
-        console.debug('[PfG Companion] no selector for production factor', techId);
+        debug('no selector for production factor', techId);
         return;
       }
       const value = Number.parseInt(select.value, 10);
       if (Number.isFinite(value)) factors[techId] = value;
-      else console.debug('[PfG Companion] non-numeric value for production factor', techId, select.value);
+      else debug('non-numeric value for production factor', techId, select.value);
     });
     return Object.keys(factors).length ? { planetId, factors } : null;
   }
@@ -328,7 +336,7 @@
     const bar = document.getElementById('buffBar');
     const planetId = currentPlanetId();
     if (!bar || !planetId) {
-      console.debug('[PfG Companion] readActiveItems: buff bar or planet id not found, skipping');
+      debug('readActiveItems: buff bar or planet id not found, skipping');
       return null;
     }
     const now = Date.now();
@@ -349,12 +357,12 @@
   }
 
   function saveProductionFactors() {
-    console.debug('[PfG Companion] saveProductionFactors: component=', GAME_COMPONENT, 'planetId=', currentPlanetId());
+    debug('saveProductionFactors: component=', GAME_COMPONENT, 'planetId=', currentPlanetId());
     const production = readProductionFactors();
-    if (!production) console.debug('[PfG Companion] saveProductionFactors: no production factors available for current component/planet');
-    else console.debug('[PfG Companion] saveProductionFactors: read', production);
+    if (!production) debug('saveProductionFactors: no production factors available for current component/planet');
+    else debug('saveProductionFactors: read', production);
     const active = readActiveItems();
-    if (active) console.debug('[PfG Companion] saveProductionFactors: active items', active);
+    if (active) debug('saveProductionFactors: active items', active);
     if (!production && !active) return;
     const uni = universe();
     if (!uni) return;
@@ -363,7 +371,7 @@
     const storedItems = active ? entry.export.pfgCompanion?.activeItems?.[active.planetId]?.items : null;
     const sameItems = (list) => Array.isArray(list) && list.map((item) => item.uuid).join() === active.items.map((item) => item.uuid).join();
     if (!production && sameItems(storedItems)) {
-      console.debug('[PfG Companion] saveProductionFactors: active items unchanged, nothing to save');
+      debug('saveProductionFactors: active items unchanged, nothing to save');
       return;
     }
     const next = structuredClone(entry.export);
@@ -375,12 +383,12 @@
     // An empty list is stored too, so expired or removed items do not linger.
     if (active) next.pfgCompanion.activeItems[active.planetId] = { collectedAt: next.exportedAt, items: active.items };
     const saved = persistExport(next, entry.collectedAt);
-    if (saved) console.debug('[PfG Companion] planet data saved', saved.pfgCompanion.productionFactors, saved.pfgCompanion.activeItems, 'status', saved.pfgCompanion.status);
+    if (saved) debug('planet data saved', saved.pfgCompanion.productionFactors, saved.pfgCompanion.activeItems, 'status', saved.pfgCompanion.status);
   }
 
   /** @param {unknown} error */
   function recordError(error) {
-    console.debug('[PfG Companion] recordError:', error);
+    debug('recordError:', error);
     const entry = activeEntry();
     if (!entry?.export) return;
     const uni = universe();
@@ -428,33 +436,24 @@
     const panel = document.getElementById('pfg-companion-panel');
     if (!panel) return;
     const status = collectionStatus(exportData);
-    console.debug('[PfG Companion] showPanel: status', status);
+    debug('showPanel: status', status);
     const collectedAt = exportData?.exportedAt ? new Date(exportData.exportedAt).toLocaleString() : 'Not collected yet';
-    const factors = exportData?.pfgCompanion?.productionFactors && typeof exportData.pfgCompanion.productionFactors === 'object' ? exportData.pfgCompanion.productionFactors : {};
-    const factorText = Object.entries(factors).map(([planetId, values]) => {
-      const planetName = exportData?.planets?.[planetId]?.name || planetId;
-      const valuesText = Object.entries(values || {}).map(([techId, value]) => `${techId}: ${value}%`).join(', ');
-      return `${escapeHtml(String(planetName))}: ${escapeHtml(valuesText || 'none')}`;
-    }).join('<br>');
     const missing = status.missingProduction?.length
       ? `<p>Missing production percentage data for the following planets:</p><ul>${status.missingProduction.map((planet) => `<li>${escapeHtml(planet.name || planet.id)} [${escapeHtml(planet.coords || '')}]</li>`).join('')}</ul>`
       : '';
-    const factorsInfo = Object.keys(factors).length
-      ? `<p class="pfg-muted">Stored production factors:<br>${factorText}</p>`
-      : `<p class="pfg-muted">No production factors stored yet.</p>`;
     const error = collectionError ? `<p class="pfg-muted">Last error: ${escapeHtml(collectionError.message)} (${escapeHtml(new Date(collectionError.at).toLocaleString())})</p>` : '';
-    panel.innerHTML = `<button type="button" aria-label="Close">×</button><h2>ProxyForGame companion</h2><p>${escapeHtml(panelText(exportData, status))}</p><p class="pfg-muted">Last collection: ${escapeHtml(collectedAt)}</p>${factorsInfo}${missing}${error}<div class="pfg-actions"><button type="button" id="pfg-refresh">Refresh</button><button type="button" id="pfg-clear">Clear data</button></div>`;
+    panel.innerHTML = `<button type="button" aria-label="Close">×</button><h2>ProxyForGame companion</h2><p>${escapeHtml(panelText(exportData, status))}</p><p class="pfg-muted">Last collection: ${escapeHtml(collectedAt)}</p>${missing}${error}<div class="pfg-actions"><button type="button" id="pfg-refresh">Refresh</button><button type="button" id="pfg-clear">Clear data</button></div>`;
     panel.querySelector('button[aria-label="Close"]')?.addEventListener('click', () => panel.classList.remove('pfg-open'));
     panel.querySelector('#pfg-refresh')?.addEventListener('click', () => {
-      console.debug('[PfG Companion] refresh clicked, forcing collection');
+      debug('refresh clicked, forcing collection');
       void collectAccount(true).then(() => {
-        console.debug('[PfG Companion] refresh flow: collection succeeded, saving production factors and refreshing UI');
+        debug('refresh flow: collection succeeded, saving production factors and refreshing UI');
         saveProductionFactors();
         refreshGameUi();
         const current = activeEntry();
         showPanel(current?.export, current?.error || null);
       }).catch((err) => {
-        console.debug('[PfG Companion] refresh flow: collection failed:', err);
+        debug('refresh flow: collection failed:', err);
         recordError(err);
         refreshGameUi();
         const current = activeEntry();
@@ -534,20 +533,24 @@
   }
 
   if (ON_GAME) {
-    console.debug('[PfG Companion] game component:', GAME_COMPONENT, 'url:', location.href);
+    debug('game component:', GAME_COMPONENT, 'url:', location.href);
     installGameUi();
+    // The panel opens only on click; if the player opened it while collection was running, show fresh data.
+    const updateOpenPanel = () => {
+      if (!document.getElementById('pfg-companion-panel')?.classList.contains('pfg-open')) return;
+      const current = activeEntry();
+      showPanel(current?.export, current?.error || null);
+    };
     void collectAccount().then(() => {
-      console.debug('[PfG Companion] collection flow: collectAccount resolved, saving production factors and refreshing UI');
+      debug('collection flow: collectAccount resolved, saving production factors and refreshing UI');
       saveProductionFactors();
       refreshGameUi();
-      const current = activeEntry();
-      showPanel(current?.export, current?.error || null);
+      updateOpenPanel();
     }).catch((error) => {
-      console.debug('[PfG Companion] collection flow: collectAccount FAILED:', error);
+      debug('collection flow: collectAccount FAILED:', error);
       recordError(error);
       refreshGameUi();
-      const current = activeEntry();
-      showPanel(current?.export, current?.error || null);
+      updateOpenPanel();
     });
   } else {
     handOffToSite();

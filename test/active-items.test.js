@@ -17,11 +17,14 @@ const PLANET_IDS = ['4431812', '4431813'];
 let store;
 let writes;
 let fetches;
+let debugLines;
+let panelOpen;
 
 beforeEach(() => {
   store = {};
   writes = 0;
   fetches = 0;
+  debugLines = [];
 });
 
 function fakeResponse(url) {
@@ -40,13 +43,14 @@ async function runPage(html) {
   w.GM_addValueChangeListener = () => {};
   w.GM_addStyle = () => {};
   w.structuredClone = structuredClone;
-  w.console = { debug() {}, log: console.log, error: console.error };
+  w.console = { debug: (...args) => debugLines.push(args), log: console.log, error: console.error };
   w.fetch = async (url) => { fetches++; return { ok: true, json: async () => fakeResponse(url) }; };
   const writesBefore = writes;
   const fetchesBefore = fetches;
   w.eval(USERSCRIPT);
   // Let the collection promise chain settle.
   await new Promise((resolve) => setTimeout(resolve, 50));
+  panelOpen = Boolean(w.document.getElementById('pfg-companion-panel')?.classList.contains('pfg-open'));
   w.close();
   return { entry: Object.values(store[SNAPSHOTS_KEY] || {})[0], writes: writes - writesBefore, fetches: fetches - fetchesBefore };
 }
@@ -110,6 +114,30 @@ test('stores an empty list when no items are active', async () => {
   const empty = OVERVIEW.replace(/<ul class="active_items hidden">[\s\S]*?<\/ul>/, '<ul class="active_items hidden"><li></li></ul>');
   const { entry } = await runPage(empty);
   assert.deepStrictEqual(activeItems(entry, '4431812').items, []);
+});
+
+test('does not open the panel or log debug output by itself', async () => {
+  await runPage(OVERVIEW);
+  assert.strictEqual(panelOpen, false);
+  assert.deepStrictEqual(debugLines, []);
+});
+
+test('logs debug output when DEBUG is switched on', async () => {
+  const withDebug = USERSCRIPT.replace('const DEBUG = false;', 'const DEBUG = true;');
+  assert.notStrictEqual(withDebug, USERSCRIPT, 'DEBUG flag is present');
+  const dom = new JSDOM(OVERVIEW, { url: GAME_URL, runScripts: 'outside-only' });
+  const w = dom.window;
+  w.GM_getValue = (key, fallback) => fallback;
+  w.GM_setValue = () => {};
+  w.GM_addValueChangeListener = () => {};
+  w.GM_addStyle = () => {};
+  w.console = { debug: (...args) => debugLines.push(args) };
+  w.fetch = async (url) => ({ ok: true, json: async () => fakeResponse(url) });
+  w.eval(withDebug);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  w.close();
+  assert.ok(debugLines.length > 0);
+  assert.ok(debugLines.every((args) => String(args[0]).startsWith('[PfG Companion] ')));
 });
 
 test('leaves stored items alone on a page without the item bar', async () => {
