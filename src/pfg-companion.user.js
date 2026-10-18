@@ -246,6 +246,25 @@
     return { level, accountReady, bodiesReady, missingProduction };
   }
 
+  // accountInfo lists the items active on every planet (planets[id].buffs); keep the known production boosters
+  // under pfgCompanion, since the planets themselves belong to the account-export format.
+  /** @param {any} planets */
+  function productionBoosters(planets) {
+    const result = {};
+    if (!planets || typeof planets !== 'object') return result;
+    Object.entries(planets).forEach(([planetId, planet]) => {
+      const buffs = Array.isArray(planet?.buffs) ? planet.buffs : [];
+      result[planetId] = buffs.filter((buff) => PRODUCTION_ITEMS[buff?.itemUuid]).map((buff) => ({
+        uuid: buff.itemUuid,
+        name: String(buff.name || ''),
+        ...PRODUCTION_ITEMS[buff.itemUuid],
+        effectStart: Number.isFinite(buff.effectStart) ? buff.effectStart : null,
+        effectEnd: Number.isFinite(buff.effectEnd) ? buff.effectEnd : null,
+      }));
+    });
+    return result;
+  }
+
   /** @param {any} exportData @param {string} [collectedAt] time of the last account fetch, which drives the collection throttle */
   function persistExport(exportData, collectedAt = exportData?.exportedAt) {
     const uni = universe();
@@ -254,12 +273,12 @@
     const all = snapshots();
     const existing = all[accountKey(exportData.playerId, uni)]?.export || {};
     const productionFactors = { ...(existing.pfgCompanion?.productionFactors || {}), ...(exportData.pfgCompanion?.productionFactors || {}) };
-    const activeItems = { ...(existing.pfgCompanion?.activeItems || {}), ...(exportData.pfgCompanion?.activeItems || {}) };
-    const next = { ...exportData, pfgCompanion: { productionFactors, activeItems } };
+    const next = { ...exportData, pfgCompanion: { productionFactors } };
     // A partial response must not erase data collected earlier.
     if (!next.speciesBonuses && existing.speciesBonuses) next.speciesBonuses = existing.speciesBonuses;
     const hasPlanets = (value) => value && typeof value === 'object' && Object.keys(value).length > 0;
     if (!hasPlanets(next.planets) && hasPlanets(existing.planets)) next.planets = existing.planets;
+    next.pfgCompanion.productionBoosters = productionBoosters(next.planets);
     next.pfgCompanion.status = collectionStatus(next);
     all[accountKey(next.playerId, uni)] = { collectedAt, export: next };
     saveSnapshots(all);
@@ -332,59 +351,25 @@
     return Object.keys(factors).length ? { planetId, factors } : null;
   }
 
-  // Items active on the current planet, from the buff bar OGame renders in the page header.
-  function readActiveItems() {
-    const bar = document.getElementById('buffBar');
-    const planetId = currentPlanetId();
-    if (!bar || !planetId) {
-      debug('readActiveItems: buff bar or planet id not found, skipping');
-      return null;
-    }
-    const now = Date.now();
-    const items = [...bar.querySelectorAll('.active_items [data-uuid]')].map((node) => {
-      const uuid = node.getAttribute('data-uuid') || '';
-      const durationNode = node.querySelector('.js_duration');
-      const remaining = Number.parseInt(durationNode?.textContent || '', 10);
-      const total = Number.parseInt(durationNode?.getAttribute('data-total-duration') || '', 10);
-      return {
-        uuid,
-        name: node.querySelector('img')?.getAttribute('alt') || '',
-        boost: PRODUCTION_ITEMS[uuid] || null,
-        totalDuration: Number.isFinite(total) ? total : null,
-        expiresAt: Number.isFinite(remaining) ? new Date(now + remaining * 1000).toISOString() : null,
-      };
-    }).filter((item) => /^[0-9a-f]{40}$/i.test(item.uuid));
-    return { planetId, items };
-  }
-
   function saveProductionFactors() {
     debug('saveProductionFactors: component=', GAME_COMPONENT, 'planetId=', currentPlanetId());
     const production = readProductionFactors();
-    if (!production) debug('saveProductionFactors: no production factors available for current component/planet');
-    else debug('saveProductionFactors: read', production);
-    const active = readActiveItems();
-    if (active) debug('saveProductionFactors: active items', active);
-    if (!production && !active) return;
+    if (!production) {
+      debug('saveProductionFactors: no production factors available for current component/planet');
+      return;
+    }
+    debug('saveProductionFactors: read', production);
     const uni = universe();
     if (!uni) return;
     const entry = activeEntry();
     if (!entry?.export) return;
-    const storedItems = active ? entry.export.pfgCompanion?.activeItems?.[active.planetId]?.items : null;
-    const sameItems = (list) => Array.isArray(list) && list.map((item) => item.uuid).join() === active.items.map((item) => item.uuid).join();
-    if (!production && sameItems(storedItems)) {
-      debug('saveProductionFactors: active items unchanged, nothing to save');
-      return;
-    }
     const next = structuredClone(entry.export);
     next.exportedAt = new Date().toISOString();
     next.pfgCompanion ??= {};
     next.pfgCompanion.productionFactors ??= {};
-    next.pfgCompanion.activeItems ??= {};
-    if (production) next.pfgCompanion.productionFactors[production.planetId] = production.factors;
-    // An empty list is stored too, so expired or removed items do not linger.
-    if (active) next.pfgCompanion.activeItems[active.planetId] = { collectedAt: next.exportedAt, items: active.items };
+    next.pfgCompanion.productionFactors[production.planetId] = production.factors;
     const saved = persistExport(next, entry.collectedAt);
-    if (saved) debug('planet data saved', saved.pfgCompanion.productionFactors, saved.pfgCompanion.activeItems, 'status', saved.pfgCompanion.status);
+    if (saved) debug('production factors saved', saved.pfgCompanion.productionFactors, 'status', saved.pfgCompanion.status);
   }
 
   /** @param {unknown} error */
