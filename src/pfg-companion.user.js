@@ -3,6 +3,8 @@
 // @namespace    https://proxyforgame.com/
 // @version      0.1.0
 // @description  Collect OGame account data while you play and make it available to ProxyForGame.
+// @updateURL    https://proxyforgame.com/companion/pfg-companion.meta.js
+// @downloadURL  https://proxyforgame.com/companion/pfg-companion.user.js
 // @match        https://*.ogame.gameforge.com/game/index.php*
 // @match        https://proxyforgame.com/*
 // @match        https://www.proxyforgame.com/*

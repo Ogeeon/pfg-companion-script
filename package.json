@@ -5,7 +5,9 @@
   "description": "A userscript companion for synchronising OGame account data with ProxyForGame.",
   "scripts": {
     "check": "node --check src/pfg-companion.user.js",
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node --test \"test/**/*.test.js\"",
+    "build": "node scripts/build.js",
+    "deploy": "npm run build && scp dist/pfg-companion.user.js dist/pfg-companion.meta.js vdsina:/var/www/pfg-companion/"
   },
   "license": "MIT",
   "devDependencies": {

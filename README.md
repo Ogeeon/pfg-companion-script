@@ -37,6 +37,16 @@ The snapshot is compatible with the account-export format consumed by `profiles-
 - `productionBoosters[planetId] = [{ uuid, name, resource, tier, percent?, effectStart, effectEnd }]` — production boosters derived from `buffs`, where `resource` is `metal`, `crystal`, `deuterium`, `energy` or `all` and the times are Unix seconds. The site should ignore boosters whose `effectEnd` has passed.
 - `status = { level, accountReady, bodiesReady, missingProduction: [{ id, name, coords }] }` — collection completeness: level 1 means account or bodies are missing, 2 means some planets lack production factors, 3 means complete.
 
+## Installation
+
+Open https://proxyforgame.com/companion/pfg-companion.user.js with Tampermonkey or Violentmonkey installed. The userscript manager checks `pfg-companion.meta.js` next to it for a newer `@version` and updates the script from there.
+
+## Releasing
+
+1. Raise `@version` in `src/pfg-companion.user.js` — userscript managers update only when it grows.
+2. Commit and push.
+3. Run `npm run deploy`: it builds `dist/` (`npm run build`: the script and its metadata block) and copies both files over SSH (host alias `vdsina`) to `/var/www/pfg-companion/` on the site's host, served as `/companion/` with `Cache-Control: no-cache`. The directory is outside the site checkout, so site deploys do not touch it.
+
 ## Local development
 
 Install the script file at `src/pfg-companion.user.js` in Tampermonkey or Violentmonkey.
