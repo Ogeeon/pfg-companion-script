@@ -690,13 +690,16 @@
     `);
   }
 
-  /** @param {any} exportData */
-  function showPanel(exportData, collectionError = null) {
+  /** @param {{ collectedAt?: string, export?: any, error?: { at: string, message: string } } | null} entry */
+  function showPanel(entry) {
     const panel = document.getElementById('pfg-companion-panel');
     if (!panel) return;
+    const exportData = entry?.export || null;
+    const collectionError = entry?.error || null;
     const status = collectionStatus(exportData);
     debug('showPanel: status', status);
-    const collectedAt = exportData?.exportedAt ? formatDate(exportData.exportedAt) : t('never');
+    // The time of the last accountInfo request, not of the last change: saving production factors does not request anything.
+    const collectedAt = entry?.collectedAt ? formatDate(entry.collectedAt) : t('never');
     const missing = status.missingProduction?.length
       ? `<p>${escapeHtml(t('missingProduction'))}</p><ul>${status.missingProduction.map((planet) => `<li>${escapeHtml(planet.name || planet.id)} [${escapeHtml(planet.coords || '')}]</li>`).join('')}</ul>`
       : '';
@@ -710,13 +713,13 @@
         saveProductionFactors();
         refreshGameUi();
         const current = activeEntry();
-        showPanel(current?.export, current?.error || null);
+        showPanel(current);
       }).catch((err) => {
         debug('refresh flow: collection failed:', err);
         recordError(err);
         refreshGameUi();
         const current = activeEntry();
-        showPanel(current?.export, current?.error || null);
+        showPanel(current);
       });
     });
     panel.querySelector('#pfg-clear')?.addEventListener('click', () => {
@@ -730,7 +733,7 @@
       }
       saveSnapshots(all);
       refreshGameUi();
-      showPanel(activeEntry()?.export || null, null);
+      showPanel(activeEntry());
     });
     panel.classList.add('pfg-open');
   }
@@ -768,7 +771,7 @@
         return;
       }
       const current = activeEntry();
-      showPanel(current?.export, current?.error || null);
+      showPanel(current);
     };
     entry.querySelector('#pfg-companion-icon')?.addEventListener('click', openPanel);
     entry.querySelector('#pfg-companion-menu-btn')?.addEventListener('click', openPanel);
@@ -829,7 +832,7 @@
     const updateOpenPanel = () => {
       if (!document.getElementById('pfg-companion-panel')?.classList.contains('pfg-open')) return;
       const current = activeEntry();
-      showPanel(current?.export, current?.error || null);
+      showPanel(current);
     };
     void collectAccount().then(() => {
       debug('collection flow: collectAccount resolved, saving production factors and refreshing UI');

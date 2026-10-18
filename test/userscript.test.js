@@ -111,6 +111,7 @@ async function runPage(html, { url = GAME_URL, script = USERSCRIPT, persistent =
     writes: writes - writesBefore,
     fetches: fetches - fetchesBefore,
     panelOpen: Boolean(w.document.getElementById('pfg-companion-panel')?.classList.contains('pfg-open')),
+    panelText: w.document.getElementById('pfg-companion-panel')?.textContent ?? '',
     icon,
     iconTitle: icon?.getAttribute('title') ?? null,
   };
@@ -184,6 +185,18 @@ test('saving production factors does not fetch the account again', async () => {
   assert.deepStrictEqual(entry.export.pfgCompanion.productionFactors[4431812], { 1: 80 });
   assert.strictEqual(entry.collectedAt, first.entry.collectedAt, 'collectedAt is not reset');
   assert.strictEqual(entry.export.pfgCompanion.productionBoosters[4431813].length, 2, 'boosters survive the update');
+});
+
+test('the panel shows the time of the last account request, not of the last change', async () => {
+  await runPage(gamePage({ menu: true }));
+  store[SNAPSHOTS_KEY][`en:1:${PLAYER_ID}`].collectedAt = '2020-01-02T12:00:00.000Z';
+  const select = '<select name="productionFactor[1]"><option value="80" selected>80%</option></select>';
+  const { panelText, entry } = await runPage(gamePage({ menu: true, body: select }), {
+    url: SETTINGS_URL,
+    afterLoad(w) { w.document.getElementById('pfg-companion-menu-btn').click(); },
+  });
+  assert.notStrictEqual(entry.export.exportedAt.slice(0, 4), '2020', 'saving production factors changed the snapshot');
+  assert.match(panelText, /Last collection: [^\n]*2020/);
 });
 
 test('does not open the panel or log debug output by itself', async () => {
