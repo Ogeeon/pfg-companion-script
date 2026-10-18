@@ -184,6 +184,28 @@ test('uses the game tooltip when OGame provides changeTooltip', async () => {
   assert.deepStrictEqual(calls, ['Nothing collected yet.'], 'the tooltip is not re-created when the text does not change');
 });
 
+test('localizes the interface by the universe language and falls back to English', async () => {
+  const ru = await runPage(gamePage({ menu: true }), { url: GAME_URL.replace('s1-en', 's1-ru'), persistent: false });
+  assert.strictEqual(ru.iconTitle, 'Данные ещё не собраны.');
+  const ba = await runPage(gamePage({ menu: true }), { url: GAME_URL.replace('s1-en', 's1-ba'), persistent: false });
+  assert.strictEqual(ba.iconTitle, 'Još ništa nije prikupljeno.');
+  const hu = await runPage(gamePage({ menu: true }), { url: GAME_URL.replace('s1-en', 's1-hu'), persistent: false });
+  assert.strictEqual(hu.iconTitle, 'Nothing collected yet.');
+});
+
+test('every interface language has the same strings as English', async () => {
+  let dictionaries;
+  await runPage(gamePage(), {
+    script: USERSCRIPT.replace('const LANGUAGE = interfaceLanguage();', 'const LANGUAGE = interfaceLanguage(); window.__I18N = I18N;'),
+    persistent: false,
+    setup(w) { Object.defineProperty(w, '__I18N', { set: (value) => { dictionaries = value; }, configurable: true }); },
+  });
+  assert.deepStrictEqual(Object.keys(dictionaries).sort(), ['bs', 'de', 'en', 'es', 'fr', 'it', 'nl', 'pl', 'pt', 'ru', 'sk', 'tr']);
+  for (const [language, strings] of Object.entries(dictionaries)) {
+    assert.deepStrictEqual(Object.keys(strings).sort(), Object.keys(dictionaries.en).sort(), language);
+  }
+});
+
 test('logs debug output when DEBUG is switched on', async () => {
   const withDebug = USERSCRIPT.replace('const DEBUG = false;', 'const DEBUG = true;');
   assert.notStrictEqual(withDebug, USERSCRIPT, 'DEBUG flag is present');
