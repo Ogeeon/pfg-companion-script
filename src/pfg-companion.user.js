@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PfG Companion
 // @namespace    https://proxyforgame.com/
-// @version      0.1.0
+// @version      0.2.0
 // @description  Collect OGame account data while you play and make it available to ProxyForGame.
 // @updateURL    https://proxyforgame.com/companion/pfg-companion.meta.js
 // @downloadURL  https://proxyforgame.com/companion/pfg-companion.user.js
@@ -110,6 +110,10 @@
       lastError: 'Last error: {message} ({date})',
       refresh: 'Refresh',
       clear: 'Clear data',
+      copy: 'Copy',
+      saveFile: 'Save to file',
+      minified: 'Minified (current universe only)',
+      copied: 'Copied',
       close: 'Close',
       iconAlt: 'PfG Companion status',
     },
@@ -129,6 +133,10 @@
       lastError: 'Последняя ошибка: {message} ({date})',
       refresh: 'Обновить',
       clear: 'Очистить данные',
+      copy: 'Скопировать',
+      saveFile: 'Сохранить в файл',
+      minified: 'Минимизированный (только текущая вселенная)',
+      copied: 'Скопировано',
       close: 'Закрыть',
       iconAlt: 'Статус PfG Companion',
     },
@@ -148,6 +156,10 @@
       lastError: 'Letzter Fehler: {message} ({date})',
       refresh: 'Aktualisieren',
       clear: 'Daten löschen',
+      copy: 'Kopieren',
+      saveFile: 'In Datei speichern',
+      minified: 'Minimiert (nur aktuelles Universum)',
+      copied: 'Kopiert',
       close: 'Schließen',
       iconAlt: 'Status von PfG Companion',
     },
@@ -167,6 +179,10 @@
       lastError: 'Ostatni błąd: {message} ({date})',
       refresh: 'Odśwież',
       clear: 'Wyczyść dane',
+      copy: 'Kopiuj',
+      saveFile: 'Zapisz do pliku',
+      minified: 'Zminimalizowany (tylko bieżące uniwersum)',
+      copied: 'Skopiowano',
       close: 'Zamknij',
       iconAlt: 'Status PfG Companion',
     },
@@ -186,6 +202,10 @@
       lastError: 'Último error: {message} ({date})',
       refresh: 'Actualizar',
       clear: 'Borrar datos',
+      copy: 'Copiar',
+      saveFile: 'Guardar en archivo',
+      minified: 'Minimizado (solo el universo actual)',
+      copied: 'Copiado',
       close: 'Cerrar',
       iconAlt: 'Estado de PfG Companion',
     },
@@ -205,6 +225,10 @@
       lastError: 'Dernière erreur : {message} ({date})',
       refresh: 'Actualiser',
       clear: 'Effacer les données',
+      copy: 'Copier',
+      saveFile: 'Enregistrer dans un fichier',
+      minified: 'Minifié (univers actuel uniquement)',
+      copied: 'Copié',
       close: 'Fermer',
       iconAlt: 'État de PfG Companion',
     },
@@ -224,6 +248,10 @@
       lastError: 'Ultimo errore: {message} ({date})',
       refresh: 'Aggiorna',
       clear: 'Cancella dati',
+      copy: 'Copia',
+      saveFile: 'Salva su file',
+      minified: 'Minimizzato (solo universo corrente)',
+      copied: 'Copiato',
       close: 'Chiudi',
       iconAlt: 'Stato di PfG Companion',
     },
@@ -243,6 +271,10 @@
       lastError: 'Laatste fout: {message} ({date})',
       refresh: 'Vernieuwen',
       clear: 'Gegevens wissen',
+      copy: 'Kopiëren',
+      saveFile: 'Opslaan in bestand',
+      minified: 'Geminimaliseerd (alleen huidig universum)',
+      copied: 'Gekopieerd',
       close: 'Sluiten',
       iconAlt: 'Status van PfG Companion',
     },
@@ -262,6 +294,10 @@
       lastError: 'Posledná chyba: {message} ({date})',
       refresh: 'Obnoviť',
       clear: 'Vymazať údaje',
+      copy: 'Kopírovať',
+      saveFile: 'Uložiť do súboru',
+      minified: 'Minimalizované (iba aktuálny vesmír)',
+      copied: 'Skopírované',
       close: 'Zavrieť',
       iconAlt: 'Stav PfG Companion',
     },
@@ -281,6 +317,10 @@
       lastError: 'Son hata: {message} ({date})',
       refresh: 'Yenile',
       clear: 'Verileri temizle',
+      copy: 'Kopyala',
+      saveFile: 'Dosyaya kaydet',
+      minified: 'Küçültülmüş (yalnızca geçerli evren)',
+      copied: 'Kopyalandı',
       close: 'Kapat',
       iconAlt: 'PfG Companion durumu',
     },
@@ -300,6 +340,10 @@
       lastError: 'Último erro: {message} ({date})',
       refresh: 'Atualizar',
       clear: 'Limpar dados',
+      copy: 'Copiar',
+      saveFile: 'Salvar em arquivo',
+      minified: 'Minimizado (apenas o universo atual)',
+      copied: 'Copiado',
       close: 'Fechar',
       iconAlt: 'Estado do PfG Companion',
     },
@@ -319,6 +363,10 @@
       lastError: 'Posljednja greška: {message} ({date})',
       refresh: 'Osvježi',
       clear: 'Obriši podatke',
+      copy: 'Kopiraj',
+      saveFile: 'Spremi u datoteku',
+      minified: 'Minimizirano (samo trenutni univerzum)',
+      copied: 'Kopirano',
       close: 'Zatvori',
       iconAlt: 'Status PfG Companion',
     },
@@ -427,7 +475,7 @@
     return Object.values(snapshots()).find((entry) => {
       if (!entry?.export || entry.export.universe?.host !== uni?.host) return false;
       if (pid && String(entry.export.playerId) !== String(pid)) return false;
-      return !planetId || Boolean(entry.export.planets?.[planetId]);
+      return !planetId || Boolean(entry.export.planets?.[planetId] || entry.export.moons?.[planetId]);
     }) || null;
   }
 
@@ -722,12 +770,85 @@
       .pfg-battery > span { width:28%; } .pfg-battery[data-level="1"] > span { width:28% !important; } .pfg-battery[data-level="2"] > span { width:60% !important; } .pfg-battery[data-level="3"] > span { width:100% !important; }
       #pfg-companion-panel ul { padding-left:18px; line-height:1.5; } #pfg-companion-panel .pfg-muted { color:#91a6bb; }
       #pfg-companion-panel .pfg-actions { display:flex; gap:8px; margin-top:12px; } #pfg-companion-panel .pfg-actions button { float:none; background:#1a2a40; border:1px solid #52769f; border-radius:4px; padding:4px 8px; font-size:12px; cursor:pointer; color:#dcecff; }
+      #pfg-companion-panel .pfg-minified { display:block; margin-top:16px; padding-top:12px; border-top:1px solid #52769f; cursor:pointer; } #pfg-companion-panel .pfg-minified input { vertical-align:middle; margin:0 6px 0 0; }
+      #pfg-companion-panel .pfg-actions button:disabled { opacity:.5; cursor:default; }
       #pfg-companion-menu { cursor:pointer; }
       #pfg-companion-menu .menu_icon { display:inline-block; vertical-align:middle; margin-right:4px; }
       #pfg-companion-icon { display:inline-block; width:27px; height:27px; margin-left:4px; border:0; background:transparent; box-sizing:border-box; text-decoration:none; line-height:0; }
       #pfg-companion-icon:hover { background:transparent; }
       #pfg-companion-icon .pfg-level-icon { display:block; width:27px; height:27px; }
     `);
+  }
+
+  // Whether the panel exports the trimmed current-universe document (for AI chats) or everything the script has stored.
+  let exportMinified = true;
+
+  /**
+   * The document for AI chats: the contract is in the ProxyForGame docs (ogame-api-import.md).
+   * @param {any} exportData
+   */
+  function trimmedExport(exportData) {
+    const result = { ...exportData };
+    for (const group of ['planets', 'moons']) {
+      if (!result[group] || typeof result[group] !== 'object') continue;
+      result[group] = Object.fromEntries(Object.entries(result[group]).map(([id, body]) => {
+        const { resources, defenses, baseProduction, ...kept } = body || {};
+        return [id, kept];
+      }));
+    }
+    result.speciesBonuses = onlyTotalBonus(result.speciesBonuses);
+    return result;
+  }
+
+  // speciesBonuses is category -> bonus name -> { totalBonus, spaceObjectBonus, technologyBonus, ... }:
+  // descend to the objects that carry totalBonus and keep only that.
+  function onlyTotalBonus(node) {
+    if (!node || typeof node !== 'object') return node;
+    if ('totalBonus' in node) return { totalBonus: node.totalBonus };
+    return Object.fromEntries(Object.entries(node).map(([key, child]) => [key, onlyTotalBonus(child)]));
+  }
+
+  function hasExportData() {
+    return exportMinified ? Boolean(activeEntry()?.export) : Object.keys(snapshots()).length > 0;
+  }
+
+  /** @returns {{ text: string, name: string } | null} */
+  function exportFile() {
+    if (!hasExportData()) return null;
+    if (!exportMinified) return { text: JSON.stringify(snapshots(), null, 2), name: 'pfg-companion-all.json' };
+    const data = activeEntry().export;
+    const uni = data.universe;
+    return { text: JSON.stringify(trimmedExport(data)), name: `pfg-companion-${uni?.language}-${uni?.number}-${data.playerId}.json` };
+  }
+
+  /** @param {string} text */
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (err) {
+      debug('clipboard API failed, falling back to execCommand:', err);
+    }
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.style.cssText = 'position:fixed;opacity:0;';
+    document.body.append(area);
+    area.select();
+    const copied = document.execCommand('copy');
+    area.remove();
+    if (!copied) throw new Error('Copy failed');
+  }
+
+  /** @param {string} text @param {string} name */
+  function saveTextFile(text, name) {
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   /** @param {{ collectedAt?: string, export?: any, error?: { at: string, message: string } } | null} entry */
@@ -744,7 +865,9 @@
       ? `<p>${escapeHtml(t('missingProduction'))}</p><ul>${status.missingProduction.map((planet) => `<li>${escapeHtml(planet.name || planet.id)} [${escapeHtml(planet.coords || '')}]</li>`).join('')}</ul>`
       : '';
     const error = collectionError ? `<p class="pfg-muted">${escapeHtml(t('lastError', { message: collectionError.message, date: formatDate(collectionError.at) }))}</p>` : '';
-    panel.innerHTML = `<button type="button" aria-label="${escapeHtml(t('close'))}">×</button><h2>ProxyForGame companion</h2><p>${escapeHtml(panelText(exportData, status))}</p><p class="pfg-muted">${escapeHtml(t('lastCollection', { date: collectedAt }))}</p>${missing}${error}<div class="pfg-actions"><button type="button" id="pfg-refresh">${escapeHtml(t('refresh'))}</button><button type="button" id="pfg-clear">${escapeHtml(t('clear'))}</button></div>`;
+    panel.innerHTML = `<button type="button" aria-label="${escapeHtml(t('close'))}">×</button><h2>ProxyForGame companion</h2><p>${escapeHtml(panelText(exportData, status))}</p><p class="pfg-muted">${escapeHtml(t('lastCollection', { date: collectedAt }))}</p>${missing}${error}<div class="pfg-actions"><button type="button" id="pfg-refresh">${escapeHtml(t('refresh'))}</button><button type="button" id="pfg-clear">${escapeHtml(t('clear'))}</button></div>`
+      + `<label class="pfg-minified"><input type="checkbox" id="pfg-minified"${exportMinified ? ' checked' : ''}>${escapeHtml(t('minified'))}</label>`
+      + `<div class="pfg-actions"><button type="button" id="pfg-copy"${hasExportData() ? '' : ' disabled'}>${escapeHtml(t('copy'))}</button><button type="button" id="pfg-save"${hasExportData() ? '' : ' disabled'}>${escapeHtml(t('saveFile'))}</button></div>`;
     panel.querySelector('button:not([id])')?.addEventListener('click', () => panel.classList.remove('pfg-open'));
     panel.querySelector('#pfg-refresh')?.addEventListener('click', () => {
       debug('refresh clicked, forcing collection');
@@ -774,6 +897,23 @@
       saveSnapshots(all);
       refreshGameUi();
       showPanel(activeEntry());
+    });
+    panel.querySelector('#pfg-minified')?.addEventListener('change', (event) => {
+      exportMinified = event.target.checked;
+      showPanel(activeEntry());
+    });
+    panel.querySelector('#pfg-copy')?.addEventListener('click', (event) => {
+      const file = exportFile();
+      if (!file) return;
+      const button = event.currentTarget;
+      void copyText(file.text).then(() => {
+        button.textContent = t('copied');
+        setTimeout(() => { button.textContent = t('copy'); }, 1500);
+      }).catch((err) => debug('copy failed:', err));
+    });
+    panel.querySelector('#pfg-save')?.addEventListener('click', () => {
+      const file = exportFile();
+      if (file) saveTextFile(file.text, file.name);
     });
     panel.classList.add('pfg-open');
   }

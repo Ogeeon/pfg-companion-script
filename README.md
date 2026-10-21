@@ -8,6 +8,7 @@ PfG Companion is a userscript for OGame and ProxyForGame. It reads an account sn
 - Never changes the selected planet, opens a game page, or runs a background polling loop.
 - Reads production factors only when the player has opened Resource Settings for that planet.
 - Adds a `PfG Companion` entry to the OGame menu. Its battery indicator shows whether account, bodies, and production settings have been collected. The panel explains every missing part and shows the time of the last collection.
+- The panel's "Copy" and "Save to file" buttons export the data by hand. With "Minified (current universe only)" checked (the default) the export is one minified document of the current universe for pasting into an AI chat (ProxyForGame's `ogame_import_account` MCP tool): the snapshot below without `resources`, `defenses` and `baseProduction` of every planet and moon, and with every `speciesBonuses` entry reduced to `{ totalBonus }`. Unchecked, it is everything the script has stored (all accounts, the whole `pfg-companion:snapshots:v1` value), indented.
 - Keeps snapshots in the userscript manager, separated by universe and player id. The script writes no account data to a ProxyForGame server.
 
 ## Stored data

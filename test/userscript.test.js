@@ -295,3 +295,58 @@ test('logs debug output when DEBUG is switched on', async () => {
   assert.ok(debugLines.length > 0);
   assert.ok(debugLines.every((args) => String(args[0]).startsWith('[PfG Companion] ')));
 });
+
+// The copy/save buttons of the panel: the trimmed current-universe export (the default) or everything stored.
+async function exportFrom(button, { minified = true } = {}) {
+  let copied = null;
+  let saved = null;
+  await runPage(gamePage({ menu: true }));
+  store[SNAPSHOTS_KEY][`en:1:${PLAYER_ID}`].export.speciesBonuses = { ships: { 202: { totalBonus: { speed: 0.002, fuel: 0 }, spaceObjectBonus: { 4431812: { speed: 0.002 } }, technologyBonus: {}, maximumBonusFuel: null } }, resources: {} };
+  store[SNAPSHOTS_KEY][`en:1:${PLAYER_ID}`].export.planets[4431812].baseProduction = { metal: 30 };
+  store[SNAPSHOTS_KEY][`en:1:${PLAYER_ID}`].export.planets[4431812].defenses = { 401: 5 };
+  store[SNAPSHOTS_KEY][`en:2:1`] = { collectedAt: 'x', export: { playerId: 1, universe: { number: 2, language: 'en', host: 's2-en.ogame.gameforge.com' } } };
+  await runPage(gamePage({ menu: true }), {
+    setup(w) {
+      w.navigator.clipboard = { writeText: async (text) => { copied = text; } };
+      w.URL.createObjectURL = (blob) => { saved = blob; return 'blob:x'; };
+      w.URL.revokeObjectURL = () => {};
+      const click = w.HTMLAnchorElement.prototype.click;
+      w.HTMLAnchorElement.prototype.click = function () { if (this.download) saved = { blob: saved, name: this.download }; else click.call(this); };
+    },
+    afterLoad(w) {
+      w.document.getElementById('pfg-companion-menu-btn').click();
+      if (!minified) w.document.getElementById('pfg-minified').click();
+      w.document.getElementById(button).click();
+    },
+  });
+  return { copied, saved };
+}
+
+test('Copy puts the trimmed minified export of the current universe on the clipboard', async () => {
+  const { copied } = await exportFrom('pfg-copy');
+  assert.ok(!copied.includes('\n'), 'minified');
+  const data = JSON.parse(copied);
+  assert.strictEqual(data.schemaVersion, 2);
+  assert.strictEqual(data.playerId, PLAYER_ID);
+  for (const planet of Object.values(data.planets)) {
+    for (const key of ['resources', 'defenses', 'baseProduction']) assert.ok(!(key in planet), key);
+  }
+  assert.strictEqual(data.planets[4431812].buffs.length, 5, 'buffs are kept');
+  assert.deepStrictEqual(data.speciesBonuses, { ships: { 202: { totalBonus: { speed: 0.002, fuel: 0 } } }, resources: {} });
+  assert.ok(data.pfgCompanion.productionBoosters);
+});
+
+test('with Minified unchecked, Copy exports everything stored', async () => {
+  const { copied } = await exportFrom('pfg-copy', { minified: false });
+  const all = JSON.parse(copied);
+  assert.deepStrictEqual(Object.keys(all).sort(), [`en:1:${PLAYER_ID}`, 'en:2:1']);
+  assert.strictEqual(all[`en:1:${PLAYER_ID}`].export.planets[4431812].resources.metal, 5628786);
+  assert.ok(copied.includes('\n'), 'indented');
+});
+
+test('Save downloads the same document as a file', async () => {
+  const { saved } = await exportFrom('pfg-save');
+  assert.strictEqual(saved.name, `pfg-companion-en-1-${PLAYER_ID}.json`);
+  const full = await exportFrom('pfg-save', { minified: false });
+  assert.strictEqual(full.saved.name, 'pfg-companion-all.json');
+});
