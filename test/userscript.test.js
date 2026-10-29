@@ -397,6 +397,29 @@ test('does not write when the bar shows the stored amounts', async () => {
   assert.strictEqual(again.writes, 0);
 });
 
+test('the stored amounts keep a reading less than 5 minutes old as it is', async () => {
+  await runPage(gamePage());
+  const bar = resourceBar({ metal: 100, crystal: 200, deuterium: 300 });
+  await runPage(gamePage({ body: bar }));
+  const at = new Date(Date.now() - 4 * 60 * 1000).toISOString();
+  storedResources()[4431812].at = at;
+  const again = await runPage(gamePage({ body: bar }));
+  assert.strictEqual(again.writes, 0);
+  assert.strictEqual(storedResources()[4431812].at, at);
+});
+
+test('the stored amounts refresh the time of a reading more than 5 minutes old', async () => {
+  await runPage(gamePage());
+  const bar = resourceBar({ metal: 100, crystal: 200, deuterium: 300 });
+  await runPage(gamePage({ body: bar }));
+  const at = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+  storedResources()[4431812].at = at;
+  const again = await runPage(gamePage({ body: bar }));
+  assert.strictEqual(again.writes, 1);
+  assert.ok(Date.parse(storedResources()[4431812].at) > Date.parse(at), 'at is refreshed');
+  assert.deepStrictEqual(resourceValues({ export: { pfgCompanion: { resources: storedResources() } } }, 4431812), [100, 200, 300]);
+});
+
 test('a bar reading keeps the error of a failed collection', async () => {
   await runPage(gamePage());
   store[SNAPSHOTS_KEY][`en:1:${PLAYER_ID}`].error = { at: '2020-01-01T00:00:00.000Z', message: 'boom' };

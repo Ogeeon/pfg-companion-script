@@ -613,6 +613,8 @@
   }
 
   const RESOURCE_KEYS = ['metal', 'crystal', 'deuterium'];
+  /** A bar reading with the stored amounts still refreshes the stored `at` once that is this much older. */
+  const SAME_RESOURCES_REFRESH_MS = 5 * 60 * 1000;
 
   /** @param {string|number|undefined} value @returns {number} */
   function timeMs(value) {
@@ -836,7 +838,9 @@
   /**
    * Stores a resource-bar reading on the account entry. Without an entry (the account was never collected) it is
    * dropped: the first account collection brings every body's resources anyway. Nothing is written when the stored
-   * reading is as new or holds the same amounts, so a page load does not trigger a hand-off for nothing.
+   * reading is as new, or holds the same amounts and is at most SAME_RESOURCES_REFRESH_MS older, so a page load does
+   * not trigger a hand-off for nothing; past that, the same amounts are written again to refresh `at`, so the site does
+   * not show the exact reading of a body whose amounts stand still (a moon, a full storage) as stale.
    * @param {ReturnType<typeof readResourceBar>} read
    */
   function saveBodyResources(read) {
@@ -847,7 +851,9 @@
       return;
     }
     const current = entry.export.pfgCompanion?.resources?.[read.bodyId];
-    if (current && (timeMs(current.at) >= timeMs(read.reading.at) || RESOURCE_KEYS.every((key) => current[key] === read.reading[key]))) {
+    const age = current ? timeMs(read.reading.at) - timeMs(current.at) : Infinity;
+    const sameAmounts = current && RESOURCE_KEYS.every((key) => current[key] === read.reading[key]);
+    if (current && (age <= 0 || (sameAmounts && age <= SAME_RESOURCES_REFRESH_MS))) {
       debug('saveBodyResources: nothing new for body', read.bodyId);
       return;
     }
