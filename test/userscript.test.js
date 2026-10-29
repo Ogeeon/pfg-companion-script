@@ -11,12 +11,20 @@ const SETTINGS_URL = 'https://s1-en.ogame.gameforge.com/game/index.php?page=inga
 const SNAPSHOTS_KEY = 'pfg-companion:snapshots:v1';
 const PLAYER_ID = 337527;
 
-/** @param {{ menu?: boolean, body?: string }} [options] */
-const gamePage = ({ menu = false, body = '' } = {}) => `<!DOCTYPE html><html><head>
+/** @param {{ menu?: boolean, body?: string, planetId?: number }} [options] */
+const gamePage = ({ menu = false, body = '', planetId = 4431812 } = {}) => `<!DOCTYPE html><html><head>
 <meta name="ogame-universe" content="s1-en.ogame.gameforge.com"/>
 <meta name="ogame-player-id" content="${PLAYER_ID}"/>
-<meta name="ogame-planet-id" content="4431812"/>
+<meta name="ogame-planet-id" content="${planetId}"/>
 </head><body>${menu ? '<ul id="menuTable"></ul>' : ''}${body}</body></html>`;
+
+// The game's resource bar: each amount as data-raw (exact) and as formatted text.
+const resourceBar = ({ metal, crystal, deuterium }, { raw = true } = {}) => ['metal', 'crystal', 'deuterium']
+  .map((key) => {
+    const value = { metal, crystal, deuterium }[key];
+    const text = typeof value === 'number' ? value.toLocaleString('de-DE') : value;
+    return `<span id="resources_${key}"${raw ? ` data-raw="${value}"` : ''}>${text}</span>`;
+  }).join('');
 
 // Shaped like a real accountInfo response (uuids and names from a live account).
 const buff = (itemUuid, name) => ({ itemUuid, name, rarity: 'common', buffStart: 1792295400, buffEnd: 1792907400, effectStart: 1792295400, effectEnd: 1792907400 });
@@ -296,6 +304,107 @@ test('logs debug output when DEBUG is switched on', async () => {
   assert.ok(debugLines.every((args) => String(args[0]).startsWith('[PfG Companion] ')));
 });
 
+const storedResources = () => store[SNAPSHOTS_KEY][`en:1:${PLAYER_ID}`].export.pfgCompanion.resources;
+
+test('seeds the resources of every body from accountInfo, dated by the collection', async () => {
+  const { entry } = await runPage(gamePage());
+  assert.deepStrictEqual(entry.export.pfgCompanion.resources, {
+    4431812: { metal: 5628786, crystal: 5118889, deuterium: 4902319, at: entry.collectedAt },
+    4431813: { metal: 3411, crystal: 14201, deuterium: 16278, at: entry.collectedAt },
+    5171549: { metal: 2961, crystal: 4451, deuterium: 600, at: entry.collectedAt },
+  });
+});
+
+test('reads the current body off the resource bar on a later page load, without a request', async () => {
+  const first = await runPage(gamePage());
+  const bar = '<span id="resources_metal" data-raw="7000000.75">7.000.000</span><span id="resources_crystal" data-raw="6000000">6.000.000</span><span id="resources_deuterium" data-raw="5000000">5.000.000</span>';
+  const { entry, fetches: fetched, writes: written } = await runPage(gamePage({ body: bar }));
+  assert.strictEqual(fetched, 0);
+  assert.strictEqual(written, 1);
+  const reading = entry.export.pfgCompanion.resources[4431812];
+  assert.deepStrictEqual({ ...reading, at: undefined }, { metal: 7000000, crystal: 6000000, deuterium: 5000000, at: undefined });
+  assert.ok(Date.parse(reading.at) > Date.parse(first.entry.collectedAt), 'dated by the page load');
+  assert.strictEqual(entry.export.exportedAt, first.entry.export.exportedAt, 'exportedAt still dates the bodies\' own resources');
+  assert.strictEqual(entry.collectedAt, first.entry.collectedAt);
+  assert.strictEqual(entry.export.planets[4431812].resources.metal, 5628786, 'the account data is untouched');
+});
+
+test('falls back to the page resourcesBar object, then to the bar text in either separator style', async () => {
+  await runPage(gamePage());
+  const fromObject = await runPage(gamePage({ body: resourceBar({ metal: 1, crystal: 2, deuterium: 3 }, { raw: false }) }), {
+    setup(w) { w.unsafeWindow = w; w.resourcesBar = { resources: { metal: { amount: 11.9 }, crystal: { amount: 22 }, deuterium: { amount: 33 } } }; },
+  });
+  assert.deepStrictEqual(resourceValues(fromObject.entry, 4431812), [11, 22, 33]);
+  const text = '<span id="resources_metal">1.234.567</span><span id="resources_crystal">2,345,678</span><span id="resources_deuterium">345 678</span>';
+  const fromText = await runPage(gamePage({ body: text }));
+  assert.deepStrictEqual(resourceValues(fromText.entry, 4431812), [1234567, 2345678, 345678]);
+  const abbreviated = '<span id="resources_metal">1,2M</span><span id="resources_crystal">1</span><span id="resources_deuterium">1</span>';
+  const skipped = await runPage(gamePage({ body: abbreviated }));
+  assert.strictEqual(skipped.writes, 0, 'an abbreviated amount is not guessed at');
+});
+
+function resourceValues(entry, bodyId) {
+  const reading = entry.export.pfgCompanion.resources[bodyId];
+  return [reading.metal, reading.crystal, reading.deuterium];
+}
+
+test('accumulates readings of different bodies across pages', async () => {
+  await runPage(gamePage());
+  await runPage(gamePage({ body: resourceBar({ metal: 100, crystal: 200, deuterium: 300 }) }));
+  await runPage(gamePage({ planetId: 4431813, body: resourceBar({ metal: 400, crystal: 500, deuterium: 600 }) }));
+  const resources = storedResources();
+  assert.deepStrictEqual(resourceValues({ export: { pfgCompanion: { resources } } }, 4431812), [100, 200, 300]);
+  assert.deepStrictEqual(resourceValues({ export: { pfgCompanion: { resources } } }, 4431813), [400, 500, 600]);
+  assert.strictEqual(resources[5171549].metal, 2961, 'an unvisited body keeps the accountInfo reading');
+});
+
+test('per body the newer reading wins between the bar and accountInfo', async () => {
+  await runPage(gamePage());
+  await runPage(gamePage({ body: resourceBar({ metal: 100, crystal: 200, deuterium: 300 }) }));
+  const select = '<select name="productionFactor[1]"><option value="80" selected>80%</option></select>';
+  await runPage(gamePage({ body: select }), { url: SETTINGS_URL });
+  assert.strictEqual(storedResources()[4431812].metal, 100, 'a save with the older collection time keeps the newer bar reading');
+  tab = newTab();
+  const { entry } = await runPage(gamePage());
+  assert.strictEqual(storedResources()[4431812].metal, 5628786, 'a later accountInfo replaces the older bar reading');
+  assert.strictEqual(storedResources()[4431812].at, entry.collectedAt);
+});
+
+test('drops readings of bodies the export does not list', async () => {
+  await runPage(gamePage());
+  store[SNAPSHOTS_KEY][`en:1:${PLAYER_ID}`].export.pfgCompanion.resources[999] = { metal: 1, crystal: 1, deuterium: 1, at: new Date().toISOString() };
+  tab = newTab();
+  await runPage(gamePage());
+  assert.ok(!(999 in storedResources()));
+  const foreign = await runPage(gamePage({ planetId: 999, body: resourceBar({ metal: 1, crystal: 2, deuterium: 3 }) }));
+  assert.strictEqual(foreign.writes, 0, 'a body outside the export is not stored');
+  assert.ok(!(999 in storedResources()));
+});
+
+test('does not store a bar reading before the account was ever collected', async () => {
+  const failing = { setup(w) { w.fetch = async () => { fetches++; return { ok: false, status: 500 }; }; } };
+  const { writes: written } = await runPage(gamePage({ body: resourceBar({ metal: 1, crystal: 2, deuterium: 3 }) }), failing);
+  assert.strictEqual(written, 0);
+  assert.strictEqual(store[SNAPSHOTS_KEY], undefined);
+});
+
+test('does not write when the bar shows the stored amounts', async () => {
+  await runPage(gamePage());
+  const bar = resourceBar({ metal: 100, crystal: 200, deuterium: 300 });
+  const first = await runPage(gamePage({ body: bar }));
+  assert.strictEqual(first.writes, 1);
+  const again = await runPage(gamePage({ body: bar }));
+  assert.strictEqual(again.writes, 0);
+});
+
+test('a bar reading keeps the error of a failed collection', async () => {
+  await runPage(gamePage());
+  store[SNAPSHOTS_KEY][`en:1:${PLAYER_ID}`].error = { at: '2020-01-01T00:00:00.000Z', message: 'boom' };
+  const { entry } = await runPage(gamePage({ body: resourceBar({ metal: 100, crystal: 200, deuterium: 300 }) }));
+  assert.strictEqual(entry.export.pfgCompanion.resources[4431812].metal, 100);
+  assert.deepStrictEqual(entry.error, { at: '2020-01-01T00:00:00.000Z', message: 'boom' });
+});
+
 // The copy/save buttons of the panel: the trimmed current-universe export (the default) or everything stored.
 async function exportFrom(button, { minified = true } = {}) {
   let copied = null;
@@ -334,6 +443,8 @@ test('Copy puts the trimmed minified export of the current universe on the clipb
   assert.strictEqual(data.planets[4431812].buffs.length, 5, 'buffs are kept');
   assert.deepStrictEqual(data.speciesBonuses, { ships: { 202: { totalBonus: { speed: 0.002, fuel: 0 } } }, resources: {} });
   assert.ok(data.pfgCompanion.productionBoosters);
+  assert.ok(!('resources' in data.pfgCompanion), 'the resource readings are stripped');
+  assert.ok(data.pfgCompanion.status, 'the rest of pfgCompanion is kept');
 });
 
 test('with Minified unchecked, Copy exports everything stored', async () => {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PfG Companion
 // @namespace    https://proxyforgame.com/
-// @version      0.2.0
+// @version      0.3.0
 // @description  Collect OGame account data while you play and make it available to ProxyForGame.
 // @updateURL    https://proxyforgame.com/companion/pfg-companion.meta.js
 // @downloadURL  https://proxyforgame.com/companion/pfg-companion.user.js
@@ -612,8 +612,67 @@
     return result;
   }
 
-  /** @param {any} exportData @param {string} [collectedAt] time of the last account fetch, which drives the collection throttle */
-  function persistExport(exportData, collectedAt = exportData?.exportedAt) {
+  const RESOURCE_KEYS = ['metal', 'crystal', 'deuterium'];
+
+  /** @param {string|number|undefined} value @returns {number} */
+  function timeMs(value) {
+    return typeof value === 'number' ? value : Date.parse(typeof value === 'string' ? value : '');
+  }
+
+  /** A resource reading `{ metal, crystal, deuterium, at }`, or null when any value or the time is unusable. @param {any} raw @param {any} at */
+  function resourceReading(raw, at) {
+    if (!raw || typeof raw !== 'object' || !Number.isFinite(timeMs(at))) return null;
+    const reading = {};
+    for (const key of RESOURCE_KEYS) {
+      if (typeof raw[key] !== 'number' || !Number.isFinite(raw[key])) return null;
+      reading[key] = raw[key];
+    }
+    reading.at = at;
+    return reading;
+  }
+
+  /** Ids of the planets and moons of an export, as the keys the export uses for them. @param {any} exportData */
+  function bodyIds(exportData) {
+    const ids = new Set();
+    for (const group of ['planets', 'moons']) {
+      const bodies = exportData?.[group];
+      if (bodies && typeof bodies === 'object') Object.keys(bodies).forEach((id) => ids.add(String(id)));
+    }
+    return ids;
+  }
+
+  /**
+   * The resources of every body: stored readings and new ones merged per body by `at` (a strictly newer reading
+   * replaces an older one), seeded from the bodies' own `resources` as of `collectedAt`, limited to the bodies of the export.
+   * @param {any} exportData @param {Record<string, any>[]} sources @param {string|undefined} collectedAt
+   */
+  function mergedResources(exportData, sources, collectedAt) {
+    const result = {};
+    const offer = (id, reading) => {
+      if (!reading) return;
+      const current = result[id];
+      if (!current || timeMs(reading.at) > timeMs(current.at)) result[id] = reading;
+    };
+    sources.forEach((source) => {
+      if (!source || typeof source !== 'object') return;
+      Object.entries(source).forEach(([id, entry]) => offer(String(id), resourceReading(entry, entry?.at)));
+    });
+    for (const group of ['planets', 'moons']) {
+      const bodies = exportData?.[group];
+      if (!bodies || typeof bodies !== 'object') continue;
+      Object.entries(bodies).forEach(([id, body]) => offer(String(id), resourceReading(body?.resources, collectedAt)));
+    }
+    const known = bodyIds(exportData);
+    Object.keys(result).forEach((id) => { if (!known.has(id)) delete result[id]; });
+    return result;
+  }
+
+  /**
+   * @param {any} exportData
+   * @param {string} [collectedAt] time of the last account fetch, which drives the collection throttle
+   * @param {{ at: string, message: string }} [error] an error to keep on the entry (a resource-bar save is no new collection)
+   */
+  function persistExport(exportData, collectedAt = exportData?.exportedAt, error = undefined) {
     const uni = universe();
     debug('persistExport: playerId=', exportData?.playerId, 'playerIdValid=', Number.isFinite(Number(exportData?.playerId)), 'universe=', uni ? `${uni.language}:${uni.number}` : null, 'hasPlanets=', !!(exportData?.planets && typeof exportData.planets === 'object'));
     if (!uni || !Number.isFinite(Number(exportData.playerId))) return;
@@ -626,8 +685,9 @@
     const hasPlanets = (value) => value && typeof value === 'object' && Object.keys(value).length > 0;
     if (!hasPlanets(next.planets) && hasPlanets(existing.planets)) next.planets = existing.planets;
     next.pfgCompanion.productionBoosters = productionBoosters(next.planets);
+    next.pfgCompanion.resources = mergedResources(next, [existing.pfgCompanion?.resources, exportData.pfgCompanion?.resources], collectedAt);
     next.pfgCompanion.status = collectionStatus(next);
-    all[accountKey(next.playerId, uni)] = { collectedAt, export: next };
+    all[accountKey(next.playerId, uni)] = error ? { collectedAt, export: next, error } : { collectedAt, export: next };
     saveSnapshots(all);
     return next;
   }
@@ -733,6 +793,71 @@
     if (saved) debug('production factors saved', saved.pfgCompanion.productionFactors, 'status', saved.pfgCompanion.status);
   }
 
+  /**
+   * One resource from the game's resource bar. The bar's `#resources_<name>` element carries the exact amount in
+   * `data-raw`; the page's `resourcesBar` object holds the amount the page was rendered with; the element's text is the
+   * last resort, accepted only as plain digits with `.`/`,`/space thousands separators (never an abbreviated "1,2M").
+   * @param {string} key @param {any} page
+   */
+  function resourceFromBar(key, page) {
+    const element = document.getElementById(`resources_${key}`);
+    const raw = Number.parseFloat(element?.getAttribute('data-raw') ?? '');
+    if (Number.isFinite(raw)) return Math.floor(raw);
+    let amount = Number.NaN;
+    try {
+      const value = page?.resourcesBar?.resources?.[key]?.amount;
+      if (typeof value === 'number' || typeof value === 'string') amount = Number(value);
+    } catch {
+      // A page object that cannot be read is no source.
+    }
+    if (Number.isFinite(amount)) return Math.floor(amount);
+    const text = (element?.textContent || '').trim().replace(/[.,\s  ]/g, '');
+    return /^\d+$/.test(text) ? Number(text) : null;
+  }
+
+  /** Metal, crystal and deuterium of the current body as the page shows them, with the time of the read. */
+  function readResourceBar() {
+    const bodyId = document.querySelector('meta[name="ogame-planet-id"]')?.content;
+    if (!bodyId || !/^\d+$/.test(bodyId)) return null;
+    const page = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+    const reading = {};
+    for (const key of RESOURCE_KEYS) {
+      const value = resourceFromBar(key, page);
+      if (value === null) {
+        debug('readResourceBar: no value for', key);
+        return null;
+      }
+      reading[key] = value;
+    }
+    reading.at = new Date().toISOString();
+    return { bodyId, reading };
+  }
+
+  /**
+   * Stores a resource-bar reading on the account entry. Without an entry (the account was never collected) it is
+   * dropped: the first account collection brings every body's resources anyway. Nothing is written when the stored
+   * reading is as new or holds the same amounts, so a page load does not trigger a hand-off for nothing.
+   * @param {ReturnType<typeof readResourceBar>} read
+   */
+  function saveBodyResources(read) {
+    if (!read) return;
+    const entry = activeEntry();
+    if (!entry?.export || !bodyIds(entry.export).has(read.bodyId)) {
+      debug('saveBodyResources: no stored account with body', read.bodyId);
+      return;
+    }
+    const current = entry.export.pfgCompanion?.resources?.[read.bodyId];
+    if (current && (timeMs(current.at) >= timeMs(read.reading.at) || RESOURCE_KEYS.every((key) => current[key] === read.reading[key]))) {
+      debug('saveBodyResources: nothing new for body', read.bodyId);
+      return;
+    }
+    const next = structuredClone(entry.export);
+    next.pfgCompanion ??= {};
+    next.pfgCompanion.resources = { ...(next.pfgCompanion.resources || {}), [read.bodyId]: read.reading };
+    // exportedAt is left alone: it dates the bodies' own resources, which a bar reading does not touch.
+    persistExport(next, entry.collectedAt, entry.error);
+  }
+
   /** @param {unknown} error */
   function recordError(error) {
     debug('recordError:', error);
@@ -795,6 +920,10 @@
         const { resources, defenses, baseProduction, ...kept } = body || {};
         return [id, kept];
       }));
+    }
+    if (result.pfgCompanion && typeof result.pfgCompanion === 'object') {
+      const { resources, ...companion } = result.pfgCompanion;
+      result.pfgCompanion = companion;
     }
     result.speciesBonuses = onlyTotalBonus(result.speciesBonuses);
     return result;
@@ -1007,6 +1136,8 @@
 
   if (ON_GAME) {
     debug('game component:', GAME_COMPONENT, 'url:', location.href);
+    // Read before the account request, so the reading is dated by the page the player loaded.
+    const barReading = readResourceBar();
     installGameUi();
     // The panel opens only on click; if the player opened it while collection was running, show fresh data.
     const updateOpenPanel = () => {
@@ -1015,13 +1146,15 @@
       showPanel(current);
     };
     void collectAccount().then(() => {
-      debug('collection flow: collectAccount resolved, saving production factors and refreshing UI');
+      debug('collection flow: collectAccount resolved, saving resources and production factors and refreshing UI');
+      saveBodyResources(barReading);
       saveProductionFactors();
       refreshGameUi();
       updateOpenPanel();
     }).catch((error) => {
       debug('collection flow: collectAccount FAILED:', error);
       recordError(error);
+      saveBodyResources(barReading);
       refreshGameUi();
       updateOpenPanel();
     });
