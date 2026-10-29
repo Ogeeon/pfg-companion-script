@@ -50,5 +50,5 @@ The script runs in two modes, chosen by `ON_GAME` (hostname ends with `.ogame.ga
 - The battery icon's tooltip (`levelTooltip()`) uses OGame's own tooltips: the icon has class `tooltipRight`, and `setIconTooltip()` calls the page's `changeTooltip()` via `unsafeWindow`, because OGame's `initTooltips()` has already run by the time the menu entry is added. It falls back to a plain `title`.
 - The panel's "Copy"/"Save to file" buttons (`exportFile()`) export on the player's click only. Checked "Minified" = `trimmedExport()` of the active entry's export (contract: issue #1 and `docs/ogame-api-import.md` on the site side: no `resources`/`defenses`/`baseProduction` of planets and moons, no `pfgCompanion.resources`, `speciesBonuses` entries reduced to `{ totalBonus }`), minified; unchecked = the whole snapshots value, indented.
 - The panel never opens on its own: only the menu entry opens it; after collection it is re-rendered only if already open.
-- Commit messages are written in Russian.
+- Commit messages are written in English (earlier history is in Russian; do not rewrite it).
 - Source files use CRLF line endings.
